@@ -171,4 +171,24 @@ $$;
 revoke all on function public.consume_rate_limit(text, integer, integer) from public, anon, authenticated;
 grant execute on function public.consume_rate_limit(text, integer, integer) to service_role;
 
+-- ---------------------------------------------------------------------------
+-- Admin sessions
+--
+-- The admin Edge Function checks a PBKDF2 password hash from its secrets and
+-- issues a random bearer token. Only the token hash is stored here.
+-- ---------------------------------------------------------------------------
+create table if not exists public.admin_sessions (
+  token_hash text primary key,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists admin_sessions_expires_at_idx
+  on public.admin_sessions (expires_at);
+
+alter table public.admin_sessions enable row level security;
+revoke all on table public.admin_sessions from anon, authenticated;
+grant all privileges on table public.admin_sessions to service_role;
+
+
 

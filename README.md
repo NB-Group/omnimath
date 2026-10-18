@@ -155,6 +155,30 @@ rules in `supabase/functions/submit/index.ts` if a school reports a false positi
 public launch with more traffic, add Cloudflare WAF rate limiting in front of the Supabase
 function as an outer layer.
 
+### Staff inbox
+
+`/admin` is a private, unlinked page for reading contact messages and student submissions.
+It is not in the navigation and is marked `noindex`. The page talks to the `admin` Edge
+Function, which checks a PBKDF2 password hash stored in the `ADMIN_PASSWORD_HASH` Supabase
+secret, issues a random 12-hour bearer token, and stores only that token's SHA-256 in
+`admin_sessions`. Files are returned as one-hour signed URLs; the page is read-only.
+
+Deploy the function and set the hash:
+
+```bash
+supabase functions deploy admin --no-verify-jwt
+supabase secrets set ADMIN_PASSWORD_HASH="<iterations>:<saltHex>:<hashHex>"
+```
+
+To generate a new password and hash:
+
+```bash
+node -e "const {randomBytes,pbkdf2Sync}=require('node:crypto');const p=randomBytes(18).toString('base64url');const s=randomBytes(16);const h=pbkdf2Sync(p,s,150000,32,'sha256');console.log('password:',p);console.log('hash:',\`150000:\${s.toString('hex')}:\${h.toString('hex')}\`)"
+```
+
+Login attempts are rate-limited per IP. To revoke every active admin session, delete the
+rows in `public.admin_sessions` from the Supabase SQL editor or via the service role.
+
 Files are not sent through the Edge Function. After verification the function creates a
 short-lived **signed upload URL**; the browser uploads directly to Storage, then the
 function marks the row `received`. Rows awaiting an upload are stored as `pending`, so the
