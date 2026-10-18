@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en-NZ">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#003e8a" />
+    <title>Omnimath — Mathematics Beyond the Classroom</title>
+    <meta
+      name="description"
+      content="Omnimath is a New Zealand mathematics competition where students in Years 5–8 solve six real-world challenges across six weeks, from elections and economics to games, history and everyday systems."
+    />
+    <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="%BASE_URL%favicon-64.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <link rel="manifest" href="%BASE_URL%site.webmanifest" />
+    <link rel="preload" as="image" href="%BASE_URL%omnimath-logo.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Omnimath" />
+    <meta property="og:url" content="https://omnimath.co.nz/" />
+    <meta property="og:title" content="Omnimath — Mathematics Beyond the Classroom" />
+    <meta
+      property="og:description"
+      content="Six weeks. Six real-world challenges. A mathematics competition for Years 5–8, made in Aotearoa New Zealand."
+    />
+    <meta property="og:image" content="%BASE_URL%og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Omnimath — Mathematics beyond the classroom" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="%BASE_URL%og.png" />
+    <script>
+      // Restore a deep link captured by 404.html (GitHub Pages SPA fallback).
+      (function () {
+        var BASE = '%BASE_URL%';
+        var target = null;
+        try { target = sessionStorage.getItem('omnimath:redirect'); } catch (e) {}
+        if (!target) return;
+        try { sessionStorage.removeItem('omnimath:redirect'); } catch (e) {}
+        try {
+          var url = new URL(target, location.origin);
+          if (url.search.indexOf('?/') !== 0) return;
+          var raw = decodeURIComponent(url.search.slice(2));
+          var parts = raw.split('&');
+          var path = parts.shift() || '';
+          var query = parts.join('&');
+          history.replaceState(null, '', BASE + path + (query ? '?' + query : '') + url.hash);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

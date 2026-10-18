@@ -1,0 +1,23 @@
+{
+  "name": "Omnimath",
+  "short_name": "Omnimath",
+  "description": "A real-world mathematics competition for students in Years 5–8, based in Aotearoa New Zealand.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#faf7f0",
+  "theme_color": "#003e8a",
+  "icons": [
+    {
+      "src": "icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
