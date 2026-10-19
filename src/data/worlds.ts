@@ -45,7 +45,7 @@ export const worlds: World[] = [
     formula: String.raw`\max_{x}\; U(x) \quad \text{s.t.} \quad p \cdot x \le m`,
     accent: 'leaf',
     image: 'worlds/economics.webp',
-    imageAlt: 'A crowded night market glowing with signs and lanterns',
+    imageAlt: 'Vaulted trading hall of the former Brussels Stock Exchange',
   },
   {
     id: 'games',
@@ -69,7 +69,7 @@ export const worlds: World[] = [
     formula: String.raw`\frac{dN}{dt} = rN\!\left(1-\frac{N}{K}\right)`,
     accent: 'leaf',
     image: 'worlds/science.webp',
-    imageAlt: 'Looking up into the crown of an ancient kauri tree',
+    imageAlt: 'Wind turbines on a green ridge line',
   },
   {
     id: 'systems',
@@ -81,6 +81,6 @@ export const worlds: World[] = [
     formula: String.raw`d(A,B) = \min_{p \in P} \sum_{e \in p} w(e)`,
     accent: 'paper',
     image: 'worlds/systems.webp',
-    imageAlt: 'The historic Britomart transport centre facade in Auckland',
+    imageAlt: 'Aerial view of a multi-level motorway interchange',
   },
 ]

@@ -23,7 +23,6 @@ export function LogoGlobe({ className }: { className?: string }) {
       .then(({ createGlobe }) => {
         if (disposed) return
         handle = createGlobe(canvas, wrap, {
-          mapUrl: `${import.meta.env.BASE_URL}earth-map.png`,
           reduced: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
           onReady: () => {
             if (!disposed) setReady(true)

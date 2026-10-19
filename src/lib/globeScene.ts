@@ -15,11 +15,11 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three'
+import { LAND_MASK_MAX_COLUMNS, LAND_MASK_ROWS, decodeLandMask } from './landMask'
 
 export type GlobeHandle = { dispose: () => void }
 
 type Options = {
-  mapUrl: string
   reduced: boolean
   onReady: () => void
 }
@@ -28,14 +28,14 @@ const FOV = 32
 const CORE_RADIUS = 0.985
 const DOT_RADIUS = 1.006
 
-// A true Möbius band: one half-twist over the loop. The wide gold band
-// circles the globe; the front pass faces the camera and the twist turns the
-// band over as it wraps around the back, exactly the single-surface object
-// Bella asked for.
-const RIBBON_RADIUS = 1.43
-const RIBBON_HALF_WIDTH = 0.225
-const RIBBON_HALF_THICKNESS = 0.024
-const RIBBON_TWIST_PHASE = Math.PI / 4
+// The gold band from the mark: one half-turn as it circles the globe, so the
+// front pass is seen edge-on while the wide faces show in the side loops.
+const RIBBON_RADIUS = 1.6
+const RIBBON_HALF_WIDTH = 0.34
+const RIBBON_HALF_THICKNESS = 0.022
+// theta = u/2 - phase; the phase sets where the band turns edge-on. The mark's
+// front pass crosses the globe edge-on, a quarter turn past face-on.
+const RIBBON_TWIST_PHASE = -Math.PI / 4
 
 function buildRibbonGeometry() {
   const segments = 480
@@ -142,40 +142,18 @@ function buildRibbonGeometry() {
   return geometry
 }
 
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.crossOrigin = 'anonymous'
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('Could not load the land mask'))
-    image.src = url
-  })
+function loadLandMask(): Uint8Array {
+  return decodeLandMask()
 }
 
 type DotCloud = { geometry: BufferGeometry; count: number }
 
 /**
- * A lat/lon lattice of dots: green over land, blue over ocean. The land mask
- * is sampled from the equirectangular map already used for the Earth texture.
+ * A lat/lon lattice of dots: green over land, blue over ocean. The land bits
+ * are baked from the equirectangular map so the globe never depends on an
+ * image fetch at runtime.
  */
-function buildDots(image: HTMLImageElement | null): DotCloud {
-  let pixels: Uint8ClampedArray | null = null
-  let mapWidth = 0
-  let mapHeight = 0
-
-  if (image) {
-    const canvas = document.createElement('canvas')
-    mapWidth = image.naturalWidth || image.width
-    mapHeight = image.naturalHeight || image.height
-    canvas.width = mapWidth
-    canvas.height = mapHeight
-    const context = canvas.getContext('2d', { willReadFrequently: true })
-    if (context) {
-      context.drawImage(image, 0, 0)
-      pixels = context.getImageData(0, 0, mapWidth, mapHeight).data
-    }
-  }
-
+function buildDots(mask: Uint8Array): DotCloud {
   const positions: number[] = []
   const colors: number[] = []
   const sizes: number[] = []
@@ -183,8 +161,9 @@ function buildDots(image: HTMLImageElement | null): DotCloud {
 
   const landColor = new Color('#74c74c')
   const oceanColor = new Color('#4f8fe8')
-  const rows = 80
-  const maxColumns = 160
+  const rows = LAND_MASK_ROWS - 1
+  const maxColumns = LAND_MASK_MAX_COLUMNS
+  let bitIndex = 0
 
   for (let row = 0; row <= rows; row++) {
     const lat = -90 + (row / rows) * 180
@@ -196,18 +175,9 @@ function buildDots(image: HTMLImageElement | null): DotCloud {
       const lon = ((column + offset) / columns) * 360 - 180
       const lonRad = (lon * Math.PI) / 180
 
-      let land = false
-      if (pixels) {
-        const u = (lon + 180) / 360
-        const v = (90 - lat) / 180
-        const px = Math.min(mapWidth - 1, Math.max(0, Math.round(u * (mapWidth - 1))))
-        const py = Math.min(mapHeight - 1, Math.max(0, Math.round(v * (mapHeight - 1))))
-        const index = (py * mapWidth + px) * 4
-        const r = pixels[index]
-        const g = pixels[index + 1]
-        const b = pixels[index + 2]
-        land = g > 110 && g > b + 35 && g > r + 20
-      }
+      const byte = mask[bitIndex >> 3] ?? 0
+      const land = ((byte >> (7 - (bitIndex & 7))) & 1) === 1
+      bitIndex += 1
 
       const cosLat = Math.cos(latRad)
       // East must appear to the right: x = sin(lon), z = cos(lon). The earlier
@@ -314,43 +284,33 @@ export function createGlobe(
 
   // ---- Gold Möbius band ----------------------------------------------------
   const ribbonGeometry = buildRibbonGeometry()
-  // The gold is deliberately unlit: a stylised two-tone shade keeps the
-  // mark's saturated sun yellow instead of the olive a physically lit metal
-  // produced, while the normal-based falloff still reveals the twist.
+  // Two flat tones, as in the drawn mark: the lit face is saturated sun and
+  // the underside is a deep amber. The normals decide which is which, so no
+  // lighting model is needed and the colour never washes out.
   const ribbonMaterial = new ShaderMaterial({
     uniforms: {
-      uGold: { value: new Color('#ffd41f') },
-      uDeep: { value: new Color('#b57a00') },
-      uEdge: { value: new Color('#fff0a6') },
-      uLight: { value: new Vector3(0.35, 0.6, 0.72).normalize() },
+      uGold: { value: new Color('#ffd818') },
+      uDeep: { value: new Color('#c98a00') },
+      uLight: { value: new Vector3(0.15, 0.55, 0.82).normalize() },
     },
     vertexShader: `
       varying vec3 vNormal;
-      varying vec3 vView;
       void main() {
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
         vNormal = normalize(normalMatrix * normal);
-        vView = normalize(-mv.xyz);
-        gl_Position = projectionMatrix * mv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
       uniform vec3 uGold;
       uniform vec3 uDeep;
-      uniform vec3 uEdge;
       uniform vec3 uLight;
       varying vec3 vNormal;
-      varying vec3 vView;
       void main() {
         vec3 n = normalize(vNormal);
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(vView);
-        float key = max(dot(n, normalize(uLight)), 0.0);
-        float up = 0.5 + 0.5 * n.y;
-        vec3 color = mix(uDeep, uGold, clamp(0.32 + 0.5 * key + 0.18 * up, 0.0, 1.0));
-        float rim = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 2.4);
-        color += uEdge * rim * 0.2;
-        gl_FragColor = vec4(color, 1.0);
+        // Hard-ish two-tone with a narrow blend, like flat vector art.
+        float lit = smoothstep(-0.08, 0.22, dot(n, normalize(uLight)));
+        gl_FragColor = vec4(mix(uDeep, uGold, lit), 1.0);
         #include <colorspace_fragment>
       }
     `,
@@ -360,20 +320,19 @@ export function createGlobe(
   ribbon.renderOrder = 2
   ribbonGroup.add(ribbon)
   // Left high and right low, like the mark. The band itself carries the
-  // half-twist; this only sets the composition. Pitch the loop toward the
-  // viewer so the back pass clears the globe at the sides and the band reads
-  // as a loop, not a straight plank across the sphere.
-  ribbonGroup.rotation.z = -0.24
-  ribbonGroup.rotation.x = 0.38
+  // half-twist and the cross-section roll; these only set the composition.
+  // Left high and right low, like the mark; the half-twist itself does the rest.
+  ribbonGroup.rotation.z = 0.15
+  ribbonGroup.rotation.x = 0.3
 
   // ---- Dotted surface ------------------------------------------------------
   let dotGeometry: BufferGeometry | null = null
   let dotMaterial: ShaderMaterial | null = null
   let dotPoints: Points | null = null
 
-  const installDots = (image: HTMLImageElement | null) => {
+  const installDots = () => {
     if (dotGeometry) return
-    const dots = buildDots(image)
+    const dots = buildDots(loadLandMask())
     dotGeometry = dots.geometry
 
     dotMaterial = new ShaderMaterial({
@@ -475,7 +434,7 @@ export function createGlobe(
     globeGroup.rotation.y = baseYaw + t * 0.045 + pointer.x * 0.32
     globeGroup.rotation.x = baseTilt + pointer.y * 0.14
     ribbonGroup.rotation.y = pointer.x * 0.04
-    ribbonGroup.rotation.x = 0.38 + pointer.y * 0.03
+    ribbonGroup.rotation.x = 0.3 + pointer.y * 0.03
     root.position.y = Math.sin(t * 0.7) * 0.015
     renderer.render(scene, camera)
   }
@@ -516,19 +475,10 @@ export function createGlobe(
   }
   document.addEventListener('visibilitychange', onVisibility)
 
-  let disposed = false
-
-  loadImage(options.mapUrl)
-    .then((image) => {
-      if (!disposed) installDots(image)
-    })
-    .catch(() => {
-      if (!disposed) installDots(null)
-    })
+  installDots()
 
   return {
     dispose() {
-      disposed = true
       stop()
       resizeObserver.disconnect()
       intersectionObserver.disconnect()

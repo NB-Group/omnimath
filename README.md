@@ -276,10 +276,10 @@ domain. Thanks to their photographers.
 | --- | --- | --- | --- |
 | Elections | [Beehive and Parliament House, Wellington](https://commons.wikimedia.org/wiki/File:Beehive_and_Parliament_House_-_Wellington_-_New_Zealand_-_DSC00165.jpg) | Daderot | CC0 |
 | History | [Colosseum of Rome and Roman forum](https://commons.wikimedia.org/wiki/File:Colosseum_of_Rome_and_Roman_forum.jpg) | Wilfredor | CC0 |
-| Economics | [Liouho Night Market, Kaohsiung](https://commons.wikimedia.org/wiki/File:Liouho-Night-Market-Kaohsiung.jpg) | Henry M. Trotter | Public domain |
+| Economics | [Brussels Stock Exchange](https://commons.wikimedia.org/wiki/File:Brussels_Stock_Exchange_(1).jpg) | Bernard Lee | CC0 |
 | Games | [Chess game Staunton No. 6](https://commons.wikimedia.org/wiki/File:Chess_game_Staunton_No._6.jpg) | Wilfredor | CC0 |
-| Science | [Waipoua Forest, kauri tree-18](https://commons.wikimedia.org/wiki/File:Waipoua_Forest,_kauri_tree-18.jpg) | Szilas | Public domain |
-| Everyday systems | [Britomart Outside Facade](https://commons.wikimedia.org/wiki/File:Britomart_Outside_Facade.jpg) | Ingolfson | Public domain |
+| Science | [Wind turbines](https://commons.wikimedia.org/wiki/File:Wind_turbines_(54089945252).jpg) | U.S. Fish and Wildlife Service | Public domain |
+| Everyday systems | [San Diego highway interchange](https://commons.wikimedia.org/wiki/File:36-san-diego-highway-94-805-interchange.jpg) | Alfred Twu | CC0 |
 
 ---
 

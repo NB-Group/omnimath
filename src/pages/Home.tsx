@@ -145,13 +145,19 @@ export function Home() {
               <LogoGlobe className="absolute inset-0" />
             </motion.div>
 
-            <motion.div
-              aria-hidden="true"
-              className="pointer-events-none absolute left-1/2 top-1/2 w-[66%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-sun/45"
-              initial={skip ? false : { scale: 0.7, opacity: 0 }}
-              animate={skip ? undefined : { scale: [0.7, 1.05, 1.2], opacity: [0, 0.75, 0] }}
-              transition={{ duration: 2.2, delay: 0.4, ease: 'easeOut' }}
-            />
+            {/* Pulse ring: only mounted when it can actually animate. With
+                reduced motion (or during a view-transition skip) the ring has
+                no opacity/scale, so it would collapse to a 1px yellow
+                hairline across the globe. */}
+            {!skip && (
+              <motion.div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-1/2 top-1/2 w-[66%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-sun/45"
+                initial={{ scale: 0.7, opacity: 0 }}
+                animate={{ scale: [0.7, 1.05, 1.2], opacity: [0, 0.75, 0] }}
+                transition={{ duration: 2.2, delay: 0.4, ease: 'easeOut' }}
+              />
+            )}
 
             <motion.div
               initial={skip ? false : { opacity: 0, y: 12 }}
