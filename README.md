@@ -39,11 +39,12 @@ Requires Node 22+ and pnpm 9+.
 
 Notable details:
 
-- **Animated globe** in the hero, drawn with Canvas 2D: a Fibonacci point cloud with
-  landmass dots and a gold ribbon echoing the logo. Pointer parallax, pauses offscreen,
-  static under `prefers-reduced-motion`.
-- **Six generative artworks** — one per competition world (elections, history, economics,
-  games, science, everyday systems). Pure canvas, no images.
+- **Animated 3D globe** in the hero: a latitude/longitude dot lattice over a deep-blue
+  core, wrapped in a gold Möbius band. Built with Three.js and lazy-loaded; pointer
+  parallax, pauses offscreen, static under `prefers-reduced-motion`.
+- **Six photographic world cards** — one per competition world (elections, history,
+  economics, games, science, everyday systems), duotoned to the site palette with a
+  cursor spotlight and a question revealed on hover.
 - **Command palette** (`⌘K` / `Ctrl+K`) across pages and actions.
 - **Interactive year map** showing which of the 15 challenges belong to Years 5–8.
 - **Accessible forms** with validation, honeypot spam trap, loading and success states.
@@ -235,7 +236,8 @@ The site is set up for the official **GitHub Actions → Pages** deployment flow
 - **KaTeX** (lazy-loaded) for decorative real mathematics
 - **Supabase JS** (loaded on demand) + a Turnstile-gated Edge Function
 - Self-hosted fonts via Fontsource: Instrument Serif, Inter, JetBrains Mono
-- Canvas 2D for the hero globe and the six generative world artworks
+- **Three.js** (lazy-loaded) for the hero globe and Möbius band
+- CC0 / public-domain photography from Wikimedia Commons, cropped and duotoned to WebP
 
 ### Structure
 
@@ -243,13 +245,15 @@ The site is set up for the official **GitHub Actions → Pages** deployment flow
 src/
   components/   Layout, header/footer, globe, world cards, forms, UI primitives
   data/         worlds, challenges, team
-  lib/          site config, Supabase client, hooks
+  lib/          site config, Supabase client, hooks, Three.js globe scene
   pages/        one file per route
-  sketches/     six generative canvas drawings
   index.css     Tailwind theme + base styles
+public/
+  worlds/       six duotoned WebP world images
 supabase/
   schema.sql                 tables, RLS, storage bucket
   functions/submit/index.ts  Turnstile verification + service-role writes
+  functions/admin/index.ts   password-gated staff inbox
 .github/
   workflows/deploy.yml
 ```
@@ -262,6 +266,20 @@ supabase/
   motion.
 - The logo PNG in `public/` was de-matted from the supplied white-background file. Replace
   it with a vector original if one becomes available.
+
+### Image credits
+
+The six world-card photographs are cropped and duotoned; the originals are CC0 or public
+domain. Thanks to their photographers.
+
+| World | Source on Wikimedia Commons | Author | Licence |
+| --- | --- | --- | --- |
+| Elections | [Beehive and Parliament House, Wellington](https://commons.wikimedia.org/wiki/File:Beehive_and_Parliament_House_-_Wellington_-_New_Zealand_-_DSC00165.jpg) | Daderot | CC0 |
+| History | [Colosseum of Rome and Roman forum](https://commons.wikimedia.org/wiki/File:Colosseum_of_Rome_and_Roman_forum.jpg) | Wilfredor | CC0 |
+| Economics | [Liouho Night Market, Kaohsiung](https://commons.wikimedia.org/wiki/File:Liouho-Night-Market-Kaohsiung.jpg) | Henry M. Trotter | Public domain |
+| Games | [Chess game Staunton No. 6](https://commons.wikimedia.org/wiki/File:Chess_game_Staunton_No._6.jpg) | Wilfredor | CC0 |
+| Science | [Waipoua Forest, kauri tree-18](https://commons.wikimedia.org/wiki/File:Waipoua_Forest,_kauri_tree-18.jpg) | Szilas | Public domain |
+| Everyday systems | [Britomart Outside Facade](https://commons.wikimedia.org/wiki/File:Britomart_Outside_Facade.jpg) | Ingolfson | Public domain |
 
 ---
 

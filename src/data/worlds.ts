@@ -6,6 +6,8 @@ export type World = {
   question: string
   formula: string
   accent: 'sun' | 'leaf' | 'paper'
+  image: string
+  imageAlt: string
 }
 
 export const worlds: World[] = [
@@ -18,6 +20,8 @@ export const worlds: World[] = [
     question: 'Can a voting system be fair to everyone at once?',
     formula: String.raw`\text{majority} = \left\lfloor \tfrac{n}{2} \right\rfloor + 1`,
     accent: 'sun',
+    image: 'worlds/elections.webp',
+    imageAlt: 'The Beehive and Parliament buildings in Wellington at dusk',
   },
   {
     id: 'history',
@@ -28,6 +32,8 @@ export const worlds: World[] = [
     question: 'How old is this object, really?',
     formula: String.raw`N(t) = N_0 \, e^{-kt}`,
     accent: 'paper',
+    image: 'worlds/history.webp',
+    imageAlt: 'The Colosseum in Rome under a dramatic sky',
   },
   {
     id: 'economics',
@@ -38,6 +44,8 @@ export const worlds: World[] = [
     question: 'What is the best choice when everything has a price?',
     formula: String.raw`\max_{x}\; U(x) \quad \text{s.t.} \quad p \cdot x \le m`,
     accent: 'leaf',
+    image: 'worlds/economics.webp',
+    imageAlt: 'A crowded night market glowing with signs and lanterns',
   },
   {
     id: 'games',
@@ -48,6 +56,8 @@ export const worlds: World[] = [
     question: 'What should you play when your opponent is thinking too?',
     formula: String.raw`u_i(s_i^*, s_{-i}^*) \ge u_i(s_i, s_{-i}^*)\;\forall s_i`,
     accent: 'sun',
+    image: 'worlds/games.webp',
+    imageAlt: 'A carved wooden chess set partway through a game',
   },
   {
     id: 'science',
@@ -58,6 +68,8 @@ export const worlds: World[] = [
     question: 'How do populations grow, and when do they stop?',
     formula: String.raw`\frac{dN}{dt} = rN\!\left(1-\frac{N}{K}\right)`,
     accent: 'leaf',
+    image: 'worlds/science.webp',
+    imageAlt: 'Looking up into the crown of an ancient kauri tree',
   },
   {
     id: 'systems',
@@ -68,5 +80,7 @@ export const worlds: World[] = [
     question: 'What is the fastest way through a network?',
     formula: String.raw`d(A,B) = \min_{p \in P} \sum_{e \in p} w(e)`,
     accent: 'paper',
+    image: 'worlds/systems.webp',
+    imageAlt: 'The historic Britomart transport centre facade in Auckland',
   },
 ]

@@ -1,13 +1,6 @@
 import { Link } from 'react-router-dom'
 import { worlds } from '../data/worlds'
-import { sketches } from '../sketches'
-import { useSketch } from '../lib/useSketch'
 import { Reveal, SectionHeading } from './ui'
-
-function Sketch({ id }: { id: string }) {
-  const ref = useSketch(sketches[id])
-  return <canvas ref={ref} className="h-full w-full" aria-hidden="true" />
-}
 
 export function WorldCards() {
   return (
@@ -58,36 +51,48 @@ export function WorldCards() {
                   event.currentTarget.style.setProperty('--mx', `${event.clientX - rect.left}px`)
                   event.currentTarget.style.setProperty('--my', `${event.clientY - rect.top}px`)
                 }}
-                className="group relative flex aspect-[4/3] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#08244c] p-5 transition-[border-color,box-shadow] duration-500 hover:border-sun/40 hover:shadow-[0_30px_70px_-40px_rgba(254,218,18,0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sun"
+                className="group relative flex aspect-[4/3] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-[#08244c] p-5 transition-[border-color,box-shadow] duration-500 hover:border-sun/45 hover:shadow-[0_34px_80px_-42px_rgba(254,218,18,0.42)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sun"
               >
-                <div className="absolute inset-0 transition-transform duration-[900ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04]">
-                  <Sketch id={world.id} />
+                <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+                  <img
+                    src={`${import.meta.env.BASE_URL}${world.image}`}
+                    alt={world.imageAlt}
+                    width={1200}
+                    height={900}
+                    loading="lazy"
+                    decoding="async"
+                    className="h-full w-full object-cover transition-transform duration-[1200ms] ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.055]"
+                  />
                 </div>
                 <div
-                  className="absolute inset-0 bg-gradient-to-t from-[#051a38] via-[#051a38]/35 to-transparent opacity-95"
+                  className="absolute inset-0 bg-[linear-gradient(to_top,#03142d_0%,rgba(3,20,45,0.86)_26%,rgba(3,20,45,0.24)_58%,rgba(3,20,45,0.04)_100%)]"
                   aria-hidden="true"
                 />
-
-                <div className="world-spotlight pointer-events-none absolute inset-0" aria-hidden="true">
+                <div
+                  className="world-spotlight pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  aria-hidden="true"
+                >
                   <div
                     className="absolute inset-0"
                     style={{
                       background:
-                        'radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(254,218,18,0.22), rgba(5,26,56,0.38) 55%, rgba(5,26,56,0.04) 100%)',
+                        'radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(254,218,18,0.2), transparent 52%)',
                     }}
                   />
-                  <div className="absolute inset-x-6 top-[42%] -translate-y-1/2 text-center">
-                    <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sun">
-                      The question
-                    </p>
-                    <p className="mx-auto mt-2 max-w-[78%] font-display text-[1.25rem] leading-[1.2] text-paper">
-                      {world.question}
-                    </p>
-                    <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.16em] text-paper/70">
-                      Explore this world →
-                    </p>
-                  </div>
                 </div>
+                <span
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sun/80 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  aria-hidden="true"
+                />
+
+                <span
+                  className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full border border-white/20 bg-[#03142d]/35 text-paper/80 backdrop-blur-sm transition-all duration-500 group-hover:border-sun group-hover:bg-sun group-hover:text-[#03142d]"
+                  aria-hidden="true"
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                    <path d="M4.5 11.5 11.5 4.5M6 4.5h5.5V10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
 
                 <div className="relative flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper/60">
                   <span>0{index + 1}</span>
@@ -95,11 +100,11 @@ export function WorldCards() {
                   <span>{world.short}</span>
                 </div>
 
-                <h3 className="relative mt-3 font-display text-[1.9rem] leading-[1.02] text-paper">
+                <h3 className="relative mt-3 max-w-[90%] font-display text-[1.9rem] leading-[1.02] text-paper">
                   {world.title}
                 </h3>
 
-                <p className="relative mt-2 max-w-[92%] text-[12px] leading-snug text-paper/60 md:hidden">
+                <p className="relative mt-2 min-h-[2.6em] max-w-[94%] text-[12px] leading-snug text-paper/70 transition-all duration-500 md:translate-y-1 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:group-focus-visible:translate-y-0 md:group-focus-visible:opacity-100">
                   {world.question}
                 </p>
               </Link>

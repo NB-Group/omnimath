@@ -5,7 +5,6 @@ import {
   Float32BufferAttribute,
   Group,
   Mesh,
-  MeshBasicMaterial,
   NoToneMapping,
   PerspectiveCamera,
   Points,
@@ -29,129 +28,117 @@ const FOV = 32
 const CORE_RADIUS = 0.985
 const DOT_RADIUS = 1.006
 
-// The logo's band is a wide hoop floating around the globe, not a narrow
-// ribbon painted on its surface. The front pass is nearly horizontal; the
-// ends curl up on the left and down on the right, forming the loop and tail.
-const RIBBON_RADIUS = 1.6
-const RIBBON_HALF_WIDTH = 0.185
-const RIBBON_HALF_THICKNESS = 0.018
-const RIBBON_RISE_LEFT = 0.42
-const RIBBON_RISE_RIGHT = 0.28
+// A true Möbius band: one half-twist over the loop. The wide gold band
+// circles the globe; the front pass faces the camera and the twist turns the
+// band over as it wraps around the back, exactly the single-surface object
+// Bella asked for.
+const RIBBON_RADIUS = 1.43
+const RIBBON_HALF_WIDTH = 0.225
+const RIBBON_HALF_THICKNESS = 0.024
+const RIBBON_TWIST_PHASE = Math.PI / 4
 
-/**
- * A thick gold hoop with four flat faces:
- * outer (bright), inner (dark), and two narrow edge faces. Building it as a
- * solid band rather than a zero-thickness strip gives the logo's crisp
- * yellow-to-orange edge, and the dark inner face forms the loop at the left.
- */
 function buildRibbonGeometry() {
   const segments = 480
   const positions: number[] = []
-  const colors: number[] = []
+  const normals: number[] = []
 
-  // The band stands upright, with its width along world Y. The path rises
-  // sharply only near the left and right edges, so the front pass stays level
-  // like the logo instead of sloping across the whole globe.
-  const axis = new Vector3(0, 1, 0)
-  const light = new Vector3(0.35, 0.75, 0.55).normalize()
-
-  const outerBase = new Color('#feda12')
-  const innerBase = new Color('#b97900')
-  const edgeBase = new Color('#925d00')
-
-  const pointAt = (u: number) => {
-    const cosU = Math.cos(u)
-    const sinU = Math.sin(u)
-    const side = Math.abs(cosU)
-    const baseRise =
-      cosU < 0
-        ? RIBBON_RISE_LEFT * Math.pow(side, 4)
-        : -RIBBON_RISE_RIGHT * Math.pow(side, 4)
-    // Lift the back-left of the hoop and drop the back-right. The front pass
-    // stays level; the separated back arc becomes the loop at the left and the
-    // tail at the right, as in the mark.
-    const backness = Math.max(0, -sinU)
-    const loopLift = 1.3 * backness * backness * -cosU
-    const center = new Vector3(
-      RIBBON_RADIUS * cosU,
-      baseRise + loopLift,
-      RIBBON_RADIUS * sinU,
-    )
-    const radial = new Vector3(cosU, 0, sinU).normalize()
-    return { center, radial }
+  type Frame = {
+    center: Vector3
+    width: Vector3
+    normal: Vector3
   }
 
-  const shade = (base: Color, amount: number, color: Color) =>
-    color.copy(base).multiplyScalar(amount)
+  const frameAt = (u: number): Frame => {
+    const radial = new Vector3(Math.cos(u), 0, Math.sin(u))
+    const tangent = new Vector3(-Math.sin(u), 0, Math.cos(u))
+    // theta advances by pi over one loop: a half-twist.
+    const theta = u / 2 - RIBBON_TWIST_PHASE
+    const width = new Vector3(0, Math.cos(theta), 0)
+      .addScaledVector(radial, Math.sin(theta))
+      .normalize()
+    const normal = new Vector3().crossVectors(width, tangent).normalize()
+    const center = radial.clone().multiplyScalar(RIBBON_RADIUS)
+    return { center, width, normal }
+  }
+
+  const cornersAt = (frame: Frame): Vector3[] => {
+    const { center, width, normal } = frame
+    return [
+      center
+        .clone()
+        .addScaledVector(width, RIBBON_HALF_WIDTH)
+        .addScaledVector(normal, RIBBON_HALF_THICKNESS),
+      center
+        .clone()
+        .addScaledVector(width, -RIBBON_HALF_WIDTH)
+        .addScaledVector(normal, RIBBON_HALF_THICKNESS),
+      center
+        .clone()
+        .addScaledVector(width, -RIBBON_HALF_WIDTH)
+        .addScaledVector(normal, -RIBBON_HALF_THICKNESS),
+      center
+        .clone()
+        .addScaledVector(width, RIBBON_HALF_WIDTH)
+        .addScaledVector(normal, -RIBBON_HALF_THICKNESS),
+    ]
+  }
+
+  const faceNormal = (frame: Frame, face: number) => {
+    if (face === 0) return frame.normal
+    if (face === 2) return frame.normal.clone().negate()
+    if (face === 1) return frame.width.clone().negate()
+    return frame.width
+  }
 
   const pushQuad = (
     a0: Vector3,
     b0: Vector3,
     a1: Vector3,
     b1: Vector3,
-    color: Color,
+    normal: Vector3,
   ) => {
-    // Two triangles; the material is DoubleSide, so only the shape matters.
+    // Two triangles with a shared flat normal. Wind them counter-clockwise
+    // around the assigned outward normal: the earlier order was backwards,
+    // so DoubleSide flipped every front normal away from the key light and
+    // the gold rendered as a dull olive. The seam closes with the corners
+    // swapped, as a Möbius band must.
     positions.push(
       a0.x, a0.y, a0.z,
-      b0.x, b0.y, b0.z,
       a1.x, a1.y, a1.z,
       b0.x, b0.y, b0.z,
+      b0.x, b0.y, b0.z,
+      a1.x, a1.y, a1.z,
       b1.x, b1.y, b1.z,
-      a1.x, a1.y, a1.z,
     )
-    for (let i = 0; i < 6; i++) colors.push(color.r, color.g, color.b)
+    for (let i = 0; i < 6; i++) normals.push(normal.x, normal.y, normal.z)
   }
+
+  const firstRing = cornersAt(frameAt(0))
 
   for (let i = 0; i < segments; i++) {
     const u0 = (i / segments) * Math.PI * 2
     const u1 = ((i + 1) / segments) * Math.PI * 2
-    const uMid = (u0 + u1) / 2
+    const frame0 = frameAt(u0)
+    const frame1 = frameAt(u1)
+    const frameMid = frameAt((u0 + u1) / 2)
+    const ring0 = cornersAt(frame0)
+    const ring1 = cornersAt(frame1)
+    const closing = i === segments - 1
 
-    const p0 = pointAt(u0)
-    const p1 = pointAt(u1)
-    const pMid = pointAt(uMid)
-
-    const corner = (
-      point: { center: Vector3; radial: Vector3 },
-      radialAmount: number,
-      widthAmount: number,
-    ) =>
-      point.center
-        .clone()
-        .addScaledVector(point.radial, radialAmount * RIBBON_HALF_THICKNESS)
-        .addScaledVector(axis, widthAmount * RIBBON_HALF_WIDTH)
-
-    const outerTop0 = corner(p0, 1, 1)
-    const outerBottom0 = corner(p0, 1, -1)
-    const innerTop0 = corner(p0, -1, 1)
-    const innerBottom0 = corner(p0, -1, -1)
-
-    const outerTop1 = corner(p1, 1, 1)
-    const outerBottom1 = corner(p1, 1, -1)
-    const innerTop1 = corner(p1, -1, 1)
-    const innerBottom1 = corner(p1, -1, -1)
-
-    const outerShade = 0.9 + 0.1 * Math.max(0, pMid.radial.dot(light))
-    const innerShade = 0.78 + 0.16 * Math.max(0, -pMid.radial.dot(light))
-    const edgeShade = 0.86 + 0.1 * Math.max(0, axis.dot(light))
-
-    const outerColor = new Color()
-    const innerColor = new Color()
-    const edgeColor = new Color()
-    shade(outerBase, Math.min(1, outerShade), outerColor)
-    shade(innerBase, innerShade, innerColor)
-    shade(edgeBase, edgeShade, edgeColor)
-
-    pushQuad(outerTop0, outerBottom0, outerTop1, outerBottom1, outerColor)
-    pushQuad(innerTop0, innerBottom0, innerTop1, innerBottom1, innerColor)
-    pushQuad(outerTop0, innerTop0, outerTop1, innerTop1, edgeColor)
-    pushQuad(outerBottom0, innerBottom0, outerBottom1, innerBottom1, edgeColor)
+    for (let face = 0; face < 4; face++) {
+      const a0 = ring0[face]
+      const b0 = ring0[(face + 1) % 4]
+      // At the seam the +W/+N frame has become -W/-N, so the final quad
+      // joins the opposite pair of corners on the first ring.
+      const a1 = closing ? firstRing[(face + 2) % 4] : ring1[face]
+      const b1 = closing ? firstRing[(face + 3) % 4] : ring1[(face + 1) % 4]
+      pushQuad(a0, b0, a1, b1, faceNormal(frameMid, face))
+    }
   }
 
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new Float32BufferAttribute(colors, 3))
+  geometry.setAttribute('normal', new Float32BufferAttribute(normals, 3))
   return geometry
 }
 
@@ -270,6 +257,8 @@ export function createGlobe(
   const camera = new PerspectiveCamera(FOV, 1, 0.1, 100)
   camera.position.set(0, 0, 4.55)
 
+  // The gold Möbius band is shaded by its own shader; no scene lights needed.
+
   const root = new Group()
   // The hoop is wider than the globe; scale the whole composition so both the
   // loop and the tail stay inside the canvas, matching the logo's framing.
@@ -323,15 +312,59 @@ export function createGlobe(
   const core = new Mesh(coreGeometry, coreMaterial)
   globeGroup.add(core)
 
-  // ---- Gold hoop -----------------------------------------------------------
+  // ---- Gold Möbius band ----------------------------------------------------
   const ribbonGeometry = buildRibbonGeometry()
-  const ribbonMaterial = new MeshBasicMaterial({
-    vertexColors: true,
+  // The gold is deliberately unlit: a stylised two-tone shade keeps the
+  // mark's saturated sun yellow instead of the olive a physically lit metal
+  // produced, while the normal-based falloff still reveals the twist.
+  const ribbonMaterial = new ShaderMaterial({
+    uniforms: {
+      uGold: { value: new Color('#ffd41f') },
+      uDeep: { value: new Color('#b57a00') },
+      uEdge: { value: new Color('#fff0a6') },
+      uLight: { value: new Vector3(0.35, 0.6, 0.72).normalize() },
+    },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vNormal = normalize(normalMatrix * normal);
+        vView = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uGold;
+      uniform vec3 uDeep;
+      uniform vec3 uEdge;
+      uniform vec3 uLight;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        vec3 n = normalize(vNormal);
+        if (!gl_FrontFacing) n = -n;
+        vec3 v = normalize(vView);
+        float key = max(dot(n, normalize(uLight)), 0.0);
+        float up = 0.5 + 0.5 * n.y;
+        vec3 color = mix(uDeep, uGold, clamp(0.32 + 0.5 * key + 0.18 * up, 0.0, 1.0));
+        float rim = pow(1.0 - clamp(dot(n, v), 0.0, 1.0), 2.4);
+        color += uEdge * rim * 0.2;
+        gl_FragColor = vec4(color, 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
     side: DoubleSide,
   })
   const ribbon = new Mesh(ribbonGeometry, ribbonMaterial)
   ribbon.renderOrder = 2
   ribbonGroup.add(ribbon)
+  // Left high and right low, like the mark. The band itself carries the
+  // half-twist; this only sets the composition. Pitch the loop toward the
+  // viewer so the back pass clears the globe at the sides and the band reads
+  // as a loop, not a straight plank across the sphere.
+  ribbonGroup.rotation.z = -0.24
+  ribbonGroup.rotation.x = 0.38
 
   // ---- Dotted surface ------------------------------------------------------
   let dotGeometry: BufferGeometry | null = null
@@ -442,7 +475,7 @@ export function createGlobe(
     globeGroup.rotation.y = baseYaw + t * 0.045 + pointer.x * 0.32
     globeGroup.rotation.x = baseTilt + pointer.y * 0.14
     ribbonGroup.rotation.y = pointer.x * 0.04
-    ribbonGroup.rotation.x = pointer.y * 0.03
+    ribbonGroup.rotation.x = 0.38 + pointer.y * 0.03
     root.position.y = Math.sin(t * 0.7) * 0.015
     renderer.render(scene, camera)
   }
