@@ -313,6 +313,88 @@ create policy "coordinators read own school files"
   );
 
 -- ---------------------------------------------------------------------------
+-- Coordinator invites
+--
+-- Admins generate one-time codes tied to a school; coordinators use them on
+-- the public /register page to create their own account. Redemption goes
+-- through the staff Edge Function (service role), so anonymous visitors can
+-- never read or guess invite rows.
+-- ---------------------------------------------------------------------------
+create table if not exists public.staff_invites (
+  code text primary key check (char_length(code) = 12),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '14 days',
+  used_at timestamptz,
+  used_by uuid references auth.users(id) on delete set null
+);
+
+comment on table public.staff_invites is
+  'One-time coordinator registration codes, one school each, admin-generated.';
+
+create index if not exists staff_invites_school_id_idx on public.staff_invites (school_id);
+
+alter table public.staff_invites enable row level security;
+
+drop policy if exists "admins manage invites" on public.staff_invites;
+create policy "admins manage invites"
+  on public.staff_invites
+  for all
+  to authenticated
+  using (public.is_staff_admin())
+  with check (public.is_staff_admin());
+
+-- ---------------------------------------------------------------------------
+-- Coordinator registration applications
+--
+-- Coordinators register themselves on the public /register page. Without an
+-- invite code the row lands here as pending; an admin approves it (creating
+-- the staff link) or rejects it. The auth account exists from registration,
+-- but the console only admits accounts with a staff row, so pending and
+-- rejected applicants have no access to anything.
+-- ---------------------------------------------------------------------------
+create table if not exists public.staff_applications (
+  id uuid primary key default gen_random_uuid(),
+  auth_id uuid references auth.users(id) on delete set null,
+  email text not null unique check (char_length(email) between 3 and 320),
+  name text not null check (char_length(name) between 1 and 200),
+  school_id uuid not null references public.schools(id) on delete cascade,
+  message text check (char_length(message) <= 1000),
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users(id) on delete set null
+);
+
+comment on table public.staff_applications is
+  'Self-registered coordinator accounts awaiting admin approval.';
+
+create index if not exists staff_applications_status_idx on public.staff_applications (status);
+
+alter table public.staff_applications enable row level security;
+
+drop policy if exists "anyone can submit an application" on public.staff_applications;
+create policy "anyone can submit an application"
+  on public.staff_applications
+  for insert
+  to anon, authenticated
+  with check (status = 'pending');
+
+drop policy if exists "admins read applications" on public.staff_applications;
+create policy "admins read applications"
+  on public.staff_applications
+  for select
+  to authenticated
+  using (public.is_staff_admin());
+
+drop policy if exists "applicants read their own application" on public.staff_applications;
+create policy "applicants read their own application"
+  on public.staff_applications
+  for select
+  to authenticated
+  using (auth_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
 -- Table privileges for the authenticated role
 -- ---------------------------------------------------------------------------
 grant select on table public.schools to anon, authenticated;
@@ -323,6 +405,10 @@ grant select on table public.staff to authenticated;
 grant select on table public.submissions to authenticated;
 grant select, insert, update on table public.marks to authenticated;
 
+grant select, insert, update, delete on table public.staff_invites to authenticated;
+grant insert, select on table public.staff_applications to authenticated;
+
 -- The service role owns the backend flow (new projects do not grant these
 -- automatically when DDL is applied through the Management API).
-grant all privileges on table public.schools, public.staff, public.marks to service_role;
+grant all privileges on table public.schools, public.staff, public.marks,
+  public.staff_invites, public.staff_applications to service_role;

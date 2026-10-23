@@ -191,11 +191,17 @@ curl -X POST "$SUPABASE_URL/functions/v1/staff" -H "apikey: $ANON_KEY" \
   -d '{"action":"bootstrap_admin","email":"you@example.org","password":"at-least-10-chars","name":"Your Name"}'
 ```
 
-After that, manage schools and coordinator accounts from the Schools & staff tab;
-the `staff` Edge Function creates the Auth users with the service role after
-verifying the caller is an admin. Losing the only admin password means rerunning
-`bootstrap_admin` after deleting the old `staff` row, so keep a second admin or
-store the credentials safely.
+After that, coordinators can register themselves at `/register`: with an
+invite code generated from the Schools & staff tab they get instant access;
+without one their application waits for approval in the same tab (approve
+creates the staff link and emails them when a mail service is configured,
+decline deletes the account but keeps the record). Losing the only admin
+password means rerunning `bootstrap_admin` after deleting the old `staff`
+row, so keep a second admin or store the credentials safely.
+
+Optional approval email: set `RESEND_API_KEY` (and `RESEND_FROM` with a
+verified sender) as Supabase secrets and approvals email the coordinator
+automatically. Until then the console says "let them know they can sign in".
 
 Files are not sent through the Edge Function. After verification the function creates a
 short-lived **signed upload URL**; the browser uploads directly to Storage, then the

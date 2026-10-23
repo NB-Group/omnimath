@@ -13,6 +13,7 @@ import { Results } from './pages/Results'
 import { NotFound } from './pages/NotFound'
 
 const Admin = lazy(() => import('./pages/Admin').then((module) => ({ default: module.Admin })))
+const Register = lazy(() => import('./pages/Register'))
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
 
@@ -35,6 +36,14 @@ export default function App() {
             element={
               <Suspense fallback={<AdminFallback />}>
                 <Admin />
+              </Suspense>
+            }
+          />
+          <Route
+            path="register"
+            element={
+              <Suspense fallback={<AdminFallback />}>
+                <Register />
               </Suspense>
             }
           />

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
 import {
+  BadgeCheck,
   BookOpenCheck,
   Check,
   ChevronLeft,
@@ -18,14 +20,17 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Ticket,
   Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { LogoLink } from '../components/Logo'
 import { cn } from '../lib/utils'
 import {
   callStaffFunction,
   getStaffClient,
+  loadApplicationStatus,
   loadStaffProfile,
   type StaffProfile,
 } from '../lib/staffClient'
@@ -77,6 +82,16 @@ type StaffRow = {
   name: string
   role: 'admin' | 'coordinator'
   school_id: string | null
+  schools: { name: string } | null
+}
+
+type ApplicationRow = {
+  id: string
+  email: string
+  name: string
+  message: string | null
+  created_at: string
+  school_id: string
   schools: { name: string } | null
 }
 
@@ -132,7 +147,12 @@ export function Admin() {
         if (cancelled) return
         if (!staff) {
           await client.auth.signOut()
-          setAuthError('This account does not have access to the staff console.')
+          const status = await loadApplicationStatus(client, sessionUser)
+          setAuthError(
+            status === 'pending'
+              ? 'Your registration is awaiting approval. Try again once the competition admin has approved it.'
+              : 'This account does not have access to the staff console.',
+          )
         } else {
           setUser(sessionUser)
           setProfile(staff)
@@ -259,7 +279,12 @@ function SignIn({
     const staff = await loadStaffProfile(client, data.user)
     if (!staff) {
       await client.auth.signOut()
-      onError('This account does not have access to the staff console.')
+      const status = await loadApplicationStatus(client, data.user)
+      onError(
+        status === 'pending'
+          ? 'Your registration is awaiting approval. Try again once it has been approved.'
+          : 'This account does not have access to the staff console.',
+      )
       setBusy(false)
       return
     }
@@ -312,6 +337,12 @@ function SignIn({
           {busy ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
           Sign in
         </button>
+        <p className="mt-4 text-center text-xs text-ink-faint">
+          New school coordinator?{' '}
+          <Link to="/register" className="text-navy underline-offset-2 hover:underline">
+            Register here
+          </Link>
+        </p>
       </form>
     </div>
   )
@@ -922,6 +953,7 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
 function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   const [schools, setSchools] = useState<School[] | null>(null)
   const [staff, setStaff] = useState<StaffRow[] | null>(null)
+  const [applications, setApplications] = useState<ApplicationRow[] | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -935,14 +967,21 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   const [busy, setBusy] = useState(false)
   const passwordRef = useRef<HTMLInputElement>(null)
   const [copied, setCopied] = useState(false)
+  const [invite, setInvite] = useState<{ code: string; school: string } | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
 
   const load = useCallback(async () => {
     setError('')
-    const [schoolsResult, staffResult] = await Promise.all([
+    const [schoolsResult, staffResult, applicationsResult] = await Promise.all([
       client.from('schools').select('id, name').order('name'),
       client
         .from('staff')
         .select('id, email, name, role, school_id, schools(name)')
+        .order('created_at', { ascending: true }),
+      client
+        .from('staff_applications')
+        .select('id, email, name, message, created_at, school_id, schools(name)')
+        .eq('status', 'pending')
         .order('created_at', { ascending: true }),
     ])
     if (schoolsResult.error || staffResult.error) {
@@ -953,6 +992,11 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
     setStaff(
       (staffResult.data ?? []).map((row) => ({ ...row, schools: row.schools ?? null }) as unknown as StaffRow),
     )
+    if (!applicationsResult.error) {
+      setApplications(
+        (applicationsResult.data ?? []).map((row) => ({ ...row, schools: row.schools ?? null }) as unknown as ApplicationRow),
+      )
+    }
   }, [client])
 
   useEffect(() => {
@@ -1051,6 +1095,85 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
       return
     }
     setNotice(`Removed ${row.name}.`)
+    load()
+  }
+
+  const createInvite = async () => {
+    const school = (schools ?? []).find((row) => row.id === coordinator.schoolId)
+    if (!school) {
+      setError('Choose a school for the invite first.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'create_invite',
+      schoolId: school.id,
+    })
+    setBusy(false)
+    if (!result.ok || typeof result.data?.code !== 'string') {
+      setError('The invite code could not be created.')
+      return
+    }
+    setInvite({ code: result.data.code, school: school.name })
+  }
+
+  const copyInvite = async () => {
+    if (!invite) return
+    const base = `${window.location.origin}${window.location.pathname.replace(/\/admin\/?$/, '')}/register`
+    await navigator.clipboard.writeText(
+      `Register your Omnimath coordinator account for ${invite.school}: ${base} (invite code ${invite.code})`,
+    )
+    setInviteCopied(true)
+    window.setTimeout(() => setInviteCopied(false), 1200)
+  }
+
+  const approve = async (row: ApplicationRow) => {
+    if (!window.confirm(`Approve ${row.name} (${row.email}) as coordinator of ${row.schools?.name ?? 'their school'}?`)) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'approve_application',
+      applicationId: row.id,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      setError('The application could not be approved.')
+      return
+    }
+    setNotice(
+      result.data?.notified
+        ? `Approved ${row.name}; an email has been sent.`
+        : `Approved ${row.name}. No mail service is configured yet, so let them know they can sign in now.`,
+    )
+    load()
+  }
+
+  const reject = async (row: ApplicationRow) => {
+    if (
+      !window.confirm(
+        `Decline ${row.name} (${row.email})? Their account is deleted and the email can register again.`,
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'reject_application',
+      applicationId: row.id,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      setError('The application could not be declined.')
+      return
+    }
+    setNotice(`Declined ${row.name}.`)
     load()
   }
 
@@ -1181,6 +1304,36 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
             Create coordinator
           </button>
         </div>
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-sm font-medium text-ink">Or let them register themselves</p>
+          <p className="mt-1 text-sm text-ink-soft">
+            Generate an invite code for the chosen school; the coordinator uses it
+            on the public register page for instant access.
+          </p>
+          <button
+            type="button"
+            onClick={createInvite}
+            disabled={busy || !coordinator.schoolId}
+            className={cn(btnGhost, 'mt-3')}
+          >
+            <Ticket size={14} /> Create invite code
+          </button>
+          {invite ? (
+            <div className="mt-3 rounded-xl bg-sun/15 px-4 py-3">
+              <p className="text-xs text-[#7a5c00]">
+                {invite.school} · code valid for 14 days, one use:
+              </p>
+              <div className="mt-1 flex items-center gap-2">
+                <code className="font-mono text-base tracking-[0.18em] text-ink">
+                  {invite.code}
+                </code>
+                <button type="button" onClick={copyInvite} className={btnGhost} title="Copy message">
+                  {inviteCopied ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={changeOwnPassword}
@@ -1188,6 +1341,57 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
         >
           <KeyRound size={13} /> Change my password ({user.email})
         </button>
+      </section>
+
+      <section className={cardClass()}>
+        <h2 className="font-display text-xl">Registration applications</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Self-registered coordinators from the public register page. Approving
+          gives their existing account access; declining deletes it.
+        </p>
+        <ul className="mt-4 divide-y divide-line">
+          {applications === null ? (
+            <li className="py-4">
+              <Loader2 size={16} className="animate-spin text-navy/50" />
+            </li>
+          ) : applications.length === 0 ? (
+            <li className="py-4 text-sm text-ink-soft">No applications waiting.</li>
+          ) : (
+            applications.map((row) => (
+              <li key={row.id} className="py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-sm font-medium text-ink">{row.name}</span>
+                    <span className="block text-xs text-ink-faint">
+                      {row.email} · {row.schools?.name ?? '—'} · {fmtDate(row.created_at)}
+                    </span>
+                    {row.message ? (
+                      <p className="mt-1 max-w-sm text-xs text-ink-soft">“{row.message}”</p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => approve(row)}
+                      className={btnGhost}
+                      title="Approve"
+                    >
+                      <BadgeCheck size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => reject(row)}
+                      className={btnGhost}
+                      title="Decline"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
       </section>
 
       <section className={cn(cardClass(), 'lg:col-span-2 overflow-x-auto p-0')}>
