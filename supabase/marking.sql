@@ -55,6 +55,14 @@ create policy "schools are publicly readable"
   to anon, authenticated
   using (true);
 
+-- The console reads contact messages with the signed-in admin's own session.
+drop policy if exists "admins read contact messages" on public.contact_messages;
+create policy "admins read contact messages"
+  on public.contact_messages
+  for select
+  to authenticated
+  using (public.is_staff_admin());
+
 -- ---------------------------------------------------------------------------
 -- Staff (admins and school coordinators)
 --
@@ -404,6 +412,7 @@ grant insert, update, delete on table public.schools to authenticated;
 
 grant select on table public.staff to authenticated;
 
+grant select on table public.contact_messages to authenticated;
 grant select on table public.submissions to authenticated;
 grant select, insert, update on table public.marks to authenticated;
 
