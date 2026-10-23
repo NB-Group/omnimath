@@ -347,18 +347,20 @@ create policy "admins manage invites"
 -- ---------------------------------------------------------------------------
 -- Coordinator registration applications
 --
--- Coordinators register themselves on the public /register page. Without an
--- invite code the row lands here as pending; an admin approves it (creating
--- the staff link) or rejects it. The auth account exists from registration,
--- but the console only admits accounts with a staff row, so pending and
--- rejected applicants have no access to anything.
+-- Coordinators register themselves on the public /register page and type
+-- their school's name; the admin's approval creates the school (or reuses a
+-- same-named one) and links the staff row. The auth account exists from
+-- registration, but the console only admits accounts with a staff row, so
+-- pending and rejected applicants have no access to anything.
 -- ---------------------------------------------------------------------------
+drop table if exists public.staff_applications;
+
 create table if not exists public.staff_applications (
   id uuid primary key default gen_random_uuid(),
   auth_id uuid references auth.users(id) on delete set null,
   email text not null unique check (char_length(email) between 3 and 320),
   name text not null check (char_length(name) between 1 and 200),
-  school_id uuid not null references public.schools(id) on delete cascade,
+  school_name text not null check (char_length(school_name) between 1 and 200),
   message text check (char_length(message) <= 1000),
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   created_at timestamptz not null default now(),
@@ -367,7 +369,7 @@ create table if not exists public.staff_applications (
 );
 
 comment on table public.staff_applications is
-  'Self-registered coordinator accounts awaiting admin approval.';
+  'Self-registered coordinator accounts awaiting admin approval, with a typed school name.';
 
 create index if not exists staff_applications_status_idx on public.staff_applications (status);
 

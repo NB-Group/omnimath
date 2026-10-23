@@ -23,7 +23,7 @@ const errors: Record<string, string> = {
     'That email is already registered. Ask the competition admin to reset its password if it is yours.',
   pending_exists:
     'An application with this email is already awaiting approval. We will be in touch.',
-  school: 'Choose a school from the list.',
+  school: "Fill in your school's name.",
   invite: 'That invite code is not valid for this school, or it has expired.',
   weak_password: 'Passwords need at least 10 characters.',
   email: 'That email address does not look right.',
@@ -41,7 +41,7 @@ export default function Register() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [schoolId, setSchoolId] = useState('')
+  const [schoolName, setSchoolName] = useState('')
   const [message, setMessage] = useState('')
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
   const [resetSignal, setResetSignal] = useState(0)
@@ -78,8 +78,7 @@ export default function Register() {
       name: name.trim(),
       email: email.trim(),
       password,
-      schoolId,
-      code: code.trim() ? code.trim().toUpperCase() : undefined,
+      ...(code.trim() ? { code: code.trim().toUpperCase() } : { schoolName: schoolName.trim() }),
       message: message.trim() || undefined,
       turnstileToken,
     })
@@ -196,25 +195,30 @@ export default function Register() {
               onChange={(event) => setPassword(event.target.value)}
             />
 
-            <label className="mt-4 block text-sm font-medium text-ink" htmlFor="reg-school">
-              School
-            </label>
-            <select
-              id="reg-school"
-              required
-              className={cn(inputClass, 'mt-1.5')}
-              value={schoolId}
-              onChange={(event) => setSchoolId(event.target.value)}
-            >
-              <option value="">
-                {schools === null ? 'Loading schools…' : 'Choose your school…'}
-              </option>
-              {(schools ?? []).map((school) => (
-                <option key={school.id} value={school.id}>
-                  {school.name}
-                </option>
-              ))}
-            </select>
+            {code.trim() ? null : (
+              <>
+                <label className="mt-4 block text-sm font-medium text-ink" htmlFor="reg-school">
+                  Your school
+                </label>
+                <input
+                  id="reg-school"
+                  required
+                  className={cn(inputClass, 'mt-1.5')}
+                  placeholder="e.g. Auckland Grammar School"
+                  list="reg-school-list"
+                  value={schoolName}
+                  onChange={(event) => setSchoolName(event.target.value)}
+                />
+                <datalist id="reg-school-list">
+                  {(schools ?? []).map((school) => (
+                    <option key={school.id} value={school.name} />
+                  ))}
+                </datalist>
+                <p className="mt-1 text-xs text-ink-faint">
+                  Type the school's full name; new schools are registered on approval.
+                </p>
+              </>
+            )}
 
             {code.trim() ? null : (
               <>

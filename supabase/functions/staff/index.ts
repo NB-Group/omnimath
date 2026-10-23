@@ -4,11 +4,14 @@
 // verifies the token against Auth, checks the caller is an admin in
 // public.staff, and then uses the service role to manage auth users:
 //
-//   apply_staff          { name, email, password, schoolId, code?, turnstileToken }
+//   apply_staff          { name, email, password, schoolName?, code?, turnstileToken }
 //                        — public registration; an invite code activates the
-//                          account instantly, without one the application
-//                          waits for admin approval
-//   approve_application  { applicationId }   — creates the staff link, emails if configured
+//                          account instantly (the code carries the school),
+//                          without one the application waits for approval with
+//                          a typed school name
+//   approve_application  { applicationId }   — links the staff row, registers
+//                        the typed school name (reusing a same-named school),
+//                        emails if configured
 //   reject_application   { applicationId }   — deletes the account, keeps the record
 //   create_coordinator   { name, email, password, schoolId }
 //   create_invite        { schoolId }            → { code }
@@ -203,6 +206,32 @@ async function pendingApplicationExists(emailAddr: string): Promise<boolean> {
   return Array.isArray(rows) && rows.length > 0
 }
 
+/**
+ * Find a school by name (case-insensitive) or create it. School names are
+ * typed by registrants, so the list grows with approvals.
+ */
+async function resolveSchool(schoolName: string): Promise<string | null> {
+  const trimmed = schoolName.trim()
+  if (!trimmed) return null
+  const wanted = trimmed.toLowerCase()
+  const existing = await service('/rest/v1/schools?select=id,name&limit=1000&order=name')
+  if (existing.ok) {
+    const rows = await existing.json().catch(() => [])
+    if (Array.isArray(rows)) {
+      const hit = rows.find((row) => typeof row?.name === 'string' && row.name.toLowerCase() === wanted)
+      if (hit) return hit.id
+    }
+  }
+  const created = await service('/rest/v1/schools', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ name: trimmed }),
+  })
+  if (!created.ok) return null
+  const school = await created.json().catch(() => null)
+  return Array.isArray(school) && school[0]?.id ? school[0].id : null
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json(405, { error: 'method' })
 
@@ -228,22 +257,22 @@ Deno.serve(async (request) => {
   if (needsEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(400, { error: 'email' })
   if (needsPassword && password.length < 10) return json(400, { error: 'weak_password' })
 
-  // Public coordinator registration. A valid invite code activates the account
-  // immediately; without one the application waits for admin approval.
+  // Public coordinator registration. A valid invite code (which carries the
+  // school) activates the account immediately; without one the applicant
+  // types their school's name and waits for admin approval.
   if (action === 'apply_staff') {
     if (name.length < 1) return json(400, { error: 'name' })
-    if (!schoolId) return json(400, { error: 'school' })
     const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim()
     if (!(await verifyTurnstile(clean(body.turnstileToken, 4096), ip))) {
       return json(403, { error: 'captcha' })
     }
-    if (!(await schoolExists(schoolId))) return json(400, { error: 'school' })
     const inviteCode = clean(body.code, 32).toUpperCase()
+    const schoolName = clean(body.schoolName, 200)
 
     if (inviteCode) {
       if (inviteCode.length !== 12) return json(400, { error: 'invite' })
       const invite = await findInvite(inviteCode)
-      if (!invite || invite.school_id !== schoolId) return json(400, { error: 'invite' })
+      if (!invite) return json(400, { error: 'invite' })
       const created = await createAuthUser({ email, password, name })
       if ('error' in created) return json(400, { error: created.error })
       const insert = await service('/rest/v1/staff', {
@@ -280,6 +309,7 @@ Deno.serve(async (request) => {
       return json(200, { ok: true, activated: true })
     }
 
+    if (!schoolName) return json(400, { error: 'school' })
     if (await pendingApplicationExists(email)) return json(400, { error: 'pending_exists' })
     const created = await createAuthUser({ email, password, name })
     if ('error' in created) return json(400, { error: created.error })
@@ -289,7 +319,7 @@ Deno.serve(async (request) => {
         auth_id: created.id,
         email,
         name,
-        school_id: schoolId,
+        school_name: schoolName,
         message: clean(body.message, 1000) || null,
         status: 'pending',
       }),
@@ -350,6 +380,8 @@ Deno.serve(async (request) => {
         return json(400, { error: 'application' })
       }
       const application = rows[0]
+      const schoolId = await resolveSchool(application.school_name)
+      if (!schoolId) return json(500, { error: 'school' })
       const insert = await service('/rest/v1/staff', {
         method: 'POST',
         body: JSON.stringify({
@@ -357,7 +389,7 @@ Deno.serve(async (request) => {
           email: application.email,
           name: application.name,
           role: 'coordinator',
-          school_id: application.school_id,
+          school_id: schoolId,
         }),
       })
       if (!insert.ok) return json(500, { error: 'insert_failed' })

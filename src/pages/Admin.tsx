@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { SupabaseClient, User } from '@supabase/supabase-js'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   BadgeCheck,
   BookOpenCheck,
@@ -91,8 +92,7 @@ type ApplicationRow = {
   name: string
   message: string | null
   created_at: string
-  school_id: string
-  schools: { name: string } | null
+  school_name: string
 }
 
 type Tab = 'submissions' | 'messages' | 'org'
@@ -211,12 +211,14 @@ export function Admin() {
   }
 
   return (
-    <Console
-      client={client}
-      user={user}
-      profile={profile}
-      onSignOut={signOut}
-    />
+    <Shell>
+      <Console
+        client={client}
+        user={user}
+        profile={profile}
+        onSignOut={signOut}
+      />
+    </Shell>
   )
 }
 
@@ -261,6 +263,15 @@ function SignIn({
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
+  const reduced = useReducedMotion()
+  const enter = (delay = 0) =>
+    reduced
+      ? {}
+      : {
+          initial: { opacity: 0, y: 16 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.6, delay, ease: [0.16, 1, 0.3, 1] as const },
+        }
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -293,16 +304,30 @@ function SignIn({
 
   return (
     <div className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
-      <div>
+      <motion.div {...enter(0)}>
         <LogoLink />
-        <h1 className="display mt-8 text-4xl sm:text-5xl">Staff console</h1>
+        <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+          Staff access
+        </p>
+        <h1 className="display mt-3 text-4xl sm:text-5xl">Staff console</h1>
         <p className="mt-4 max-w-md text-ink-soft">
           Coordinators review and mark their own school's submissions. The
           competition admin oversees every school, the message inbox and staff
           accounts.
         </p>
-      </div>
-      <form onSubmit={submit} className={cardClass()}>
+        <p className="mt-6 max-w-md border-l-2 border-sun pl-4 text-sm text-ink-soft">
+          Coordinators create their account on the{' '}
+          <Link to="/register" className="text-navy underline-offset-2 hover:underline">
+            registration page
+          </Link>{' '}
+          — an invite code gives instant access.
+        </p>
+      </motion.div>
+      <motion.form
+        {...enter(0.12)}
+        onSubmit={submit}
+        className={cardClass()}
+      >
         <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
           <Lock size={12} /> Sign in
         </div>
@@ -333,17 +358,23 @@ function SignIn({
         {authError ? (
           <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{authError}</p>
         ) : null}
-        <button type="submit" disabled={busy} className={cn(btnPrimary, 'mt-5 w-full')}>
+        <motion.button
+          type="submit"
+          disabled={busy}
+          whileHover={reduced || busy ? undefined : { y: -1 }}
+          whileTap={reduced ? undefined : { scale: 0.98 }}
+          className={cn(btnPrimary, 'mt-5 w-full')}
+        >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
           Sign in
-        </button>
+        </motion.button>
         <p className="mt-4 text-center text-xs text-ink-faint">
           New school coordinator?{' '}
           <Link to="/register" className="text-navy underline-offset-2 hover:underline">
             Register here
           </Link>
         </p>
-      </form>
+      </motion.form>
     </div>
   )
 }
@@ -389,51 +420,96 @@ function Console({
       : []),
   ]
 
+  const reduced = useReducedMotion()
+  const enter = (delay = 0) =>
+    reduced
+      ? {}
+      : {
+          initial: { opacity: 0, y: 14 },
+          animate: { opacity: 1, y: 0 },
+          transition: { duration: 0.55, delay, ease: [0.16, 1, 0.3, 1] as const },
+        }
+
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <motion.header
+        {...enter(0)}
+        className="flex flex-wrap items-center justify-between gap-4 border-b border-line pb-5"
+      >
         <div className="flex items-center gap-3">
           <LogoLink />
         </div>
-        <div className="flex items-center gap-3 text-right">
-          <div>
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden
+            className="grid size-9 place-items-center rounded-full bg-navy/10 font-display text-sm text-navy"
+          >
+            {profile.name.trim().charAt(0).toUpperCase()}
+          </span>
+          <div className="text-right">
             <p className="text-sm font-medium text-ink">{profile.name}</p>
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
-              {isAdmin ? 'Admin' : `Coordinator · ${schoolName ?? profile.school_id}`}
+              {isAdmin ? 'Admin · all schools' : `Coordinator · ${schoolName ?? profile.school_id}`}
             </p>
           </div>
-          <button type="button" onClick={onSignOut} className={btnGhost} title="Sign out">
-            <LogOut size={15} />
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        {tabs.map((entry) => (
-          <button
-            key={entry.key}
+          <motion.button
             type="button"
-            onClick={() => setTab(entry.key)}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition',
-              tab === entry.key
-                ? 'border-navy bg-navy text-paper'
-                : 'border-line bg-white text-ink hover:border-navy/40',
-            )}
+            whileHover={reduced ? undefined : { y: -1 }}
+            whileTap={reduced ? undefined : { scale: 0.97 }}
+            onClick={onSignOut}
+            className={btnGhost}
+            title="Sign out"
           >
-            {entry.icon}
-            {entry.label}
-          </button>
-        ))}
-      </div>
+            <LogOut size={15} />
+          </motion.button>
+        </div>
+      </motion.header>
 
-      <div className="mt-6">
-        {tab === 'submissions' && (
-          <SubmissionsTab client={client} profile={profile} isAdmin={isAdmin} />
-        )}
-        {tab === 'messages' && isAdmin && <MessagesTab client={client} />}
-        {tab === 'org' && isAdmin && <OrgTab client={client} user={user} />}
-      </div>
+      <motion.nav {...enter(0.08)} className="mt-6 flex flex-wrap items-center gap-1.5">
+        {tabs.map((entry) => {
+          const active = tab === entry.key
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => setTab(entry.key)}
+              className={cn(
+                'relative inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm transition-colors',
+                active ? 'text-paper' : 'text-ink-soft hover:text-navy',
+              )}
+            >
+              {active ? (
+                <motion.span
+                  layoutId="console-tab-pill"
+                  className="absolute inset-0 rounded-full bg-navy"
+                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                />
+              ) : null}
+              <span className="relative z-10 inline-flex items-center gap-2">
+                {entry.icon}
+                {entry.label}
+              </span>
+            </button>
+          )
+        })}
+      </motion.nav>
+
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={tab}
+          initial={reduced ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduced ? undefined : { opacity: 0, y: -6 }}
+          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-6"
+        >
+          {tab === 'submissions' && (
+            <SubmissionsTab client={client} profile={profile} isAdmin={isAdmin} />
+          )}
+          {tab === 'messages' && isAdmin && <MessagesTab client={client} />}
+          {tab === 'org' && isAdmin && <OrgTab client={client} user={user} />}
+        </motion.div>
+      </AnimatePresence>
     </div>
   )
 }
@@ -603,22 +679,24 @@ function SubmissionsTab({
         <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
 
-      {selected ? (
-        <SubmissionDetail
-          client={client}
-          profile={profile}
-          submission={selected}
-          onClose={() => setSelected(null)}
-          onSaved={(mark) => {
-            setRows((current) =>
-              (current ?? []).map((row) =>
-                row.id === selected.id ? { ...row, marks: mark } : row,
-              ),
-            )
-            setSelected({ ...selected, marks: mark })
-          }}
-        />
-      ) : null}
+      <AnimatePresence initial={false}>
+        {selected ? (
+          <SubmissionDetail
+            client={client}
+            profile={profile}
+            submission={selected}
+            onClose={() => setSelected(null)}
+            onSaved={(mark) => {
+              setRows((current) =>
+                (current ?? []).map((row) =>
+                  row.id === selected.id ? { ...row, marks: mark } : row,
+                ),
+              )
+              setSelected({ ...selected, marks: mark })
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
 
       <div className={cn(cardClass(), 'overflow-x-auto p-0')}>
         <table className="w-full text-left text-sm">
@@ -763,8 +841,16 @@ function SubmissionDetail({
     onSaved(data as Mark)
   }
 
+  const reduced = useReducedMotion()
+
   return (
-    <div className={cn(cardClass(), 'border-navy/30')}>
+    <motion.section
+      initial={reduced ? false : { opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reduced ? undefined : { opacity: 0, y: -10 }}
+      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      className={cn(cardClass(), 'border-navy/30')}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <button
@@ -861,7 +947,7 @@ function SubmissionDetail({
           · updated {fmtDate(submission.marks.updated_at)}
         </p>
       ) : null}
-    </div>
+    </motion.section>
   )
 }
 
@@ -872,6 +958,7 @@ function SubmissionDetail({
 function MessagesTab({ client }: { client: SupabaseClient }) {
   const [rows, setRows] = useState<Contact[] | null>(null)
   const [error, setError] = useState('')
+  const reduced = useReducedMotion()
 
   const load = useCallback(async () => {
     setError('')
@@ -917,8 +1004,18 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
             No messages yet.
           </div>
         ) : (
-          rows.map((row) => (
-            <article key={row.id} className={cardClass()}>
+          rows.map((row, index) => (
+            <motion.article
+              key={row.id}
+              initial={reduced ? false : { opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{
+                duration: 0.45,
+                delay: Math.min(index * 0.05, 0.4),
+                ease: [0.16, 1, 0.3, 1],
+              }}
+              className={cardClass()}
+            >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="font-medium text-ink">
                   {row.name}{' '}
@@ -938,7 +1035,7 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
                 {row.email}
               </a>
               <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">{row.message}</p>
-            </article>
+            </motion.article>
           ))
         )}
       </div>
@@ -980,7 +1077,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
         .order('created_at', { ascending: true }),
       client
         .from('staff_applications')
-        .select('id, email, name, message, created_at, school_id, schools(name)')
+        .select('id, email, name, message, created_at, school_name')
         .eq('status', 'pending')
         .order('created_at', { ascending: true }),
     ])
@@ -993,9 +1090,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
       (staffResult.data ?? []).map((row) => ({ ...row, schools: row.schools ?? null }) as unknown as StaffRow),
     )
     if (!applicationsResult.error) {
-      setApplications(
-        (applicationsResult.data ?? []).map((row) => ({ ...row, schools: row.schools ?? null }) as unknown as ApplicationRow),
-      )
+      setApplications((applicationsResult.data ?? []) as ApplicationRow[])
     }
   }, [client])
 
@@ -1130,7 +1225,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   }
 
   const approve = async (row: ApplicationRow) => {
-    if (!window.confirm(`Approve ${row.name} (${row.email}) as coordinator of ${row.schools?.name ?? 'their school'}?`)) {
+    if (!window.confirm(`Approve ${row.name} (${row.email}) as coordinator of ${row.school_name}?`)) {
       return
     }
     setBusy(true)
@@ -1363,7 +1458,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
                   <div>
                     <span className="text-sm font-medium text-ink">{row.name}</span>
                     <span className="block text-xs text-ink-faint">
-                      {row.email} · {row.schools?.name ?? '—'} · {fmtDate(row.created_at)}
+                      {row.email} · {row.school_name} · {fmtDate(row.created_at)}
                     </span>
                     {row.message ? (
                       <p className="mt-1 max-w-sm text-xs text-ink-soft">“{row.message}”</p>
