@@ -156,29 +156,46 @@ rules in `supabase/functions/submit/index.ts` if a school reports a false positi
 public launch with more traffic, add Cloudflare WAF rate limiting in front of the Supabase
 function as an outer layer.
 
-### Staff inbox
+### Staff console: accounts, school scoping and marking
 
-`/admin` is a private, unlinked page for reading contact messages and student submissions.
-It is not in the navigation and is marked `noindex`. The page talks to the `admin` Edge
-Function, which checks a PBKDF2 password hash stored in the `ADMIN_PASSWORD_HASH` Supabase
-secret, issues a random 12-hour bearer token, and stores only that token's SHA-256 in
-`admin_sessions`. Files are returned as one-hour signed URLs; the page is read-only.
+`/admin` is a private, unlinked page for staff. It is not in the navigation and is
+marked `noindex`. Staff sign in with a Supabase Auth account; there are two roles,
+enforced by row-level security in Postgres (`supabase/marking.sql`), not by the UI:
 
-Deploy the function and set the hash:
+- **admin** — sees every submission from every school, every message, and the
+  schools & staff list; can create coordinator accounts, reset passwords, remove
+  staff, and mark anything.
+- **coordinator** — tied to one school; sees and marks only that school's
+  submissions. The database hides everything else, including other schools'
+  rows, staff rows, and files.
+
+Marking is a score from 0 to 10 plus an optional comment, one per submission,
+editable by its author or any admin. Files open through five-minute signed URLs
+scoped by the same RLS: uploads land in `<school_id>/<uuid>` so the first folder
+names the owning school. The submissions tab also exports the visible rows as
+CSV.
+
+Deploy the backend once:
 
 ```bash
-supabase functions deploy admin --no-verify-jwt
-supabase secrets set ADMIN_PASSWORD_HASH="<iterations>:<saltHex>:<hashHex>"
+supabase db query --linked -f supabase/marking.sql
+supabase functions deploy staff --no-verify-jwt --use-api
+supabase functions deploy submit --no-verify-jwt --use-api
 ```
 
-To generate a new password and hash:
+Create the first admin once (the action disables itself after an admin exists):
 
 ```bash
-node -e "const {randomBytes,pbkdf2Sync}=require('node:crypto');const p=randomBytes(18).toString('base64url');const s=randomBytes(16);const h=pbkdf2Sync(p,s,150000,32,'sha256');console.log('password:',p);console.log('hash:',\`150000:\${s.toString('hex')}:\${h.toString('hex')}\`)"
+curl -X POST "$SUPABASE_URL/functions/v1/staff" -H "apikey: $ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"bootstrap_admin","email":"you@example.org","password":"at-least-10-chars","name":"Your Name"}'
 ```
 
-Login attempts are rate-limited per IP. To revoke every active admin session, delete the
-rows in `public.admin_sessions` from the Supabase SQL editor or via the service role.
+After that, manage schools and coordinator accounts from the Schools & staff tab;
+the `staff` Edge Function creates the Auth users with the service role after
+verifying the caller is an admin. Losing the only admin password means rerunning
+`bootstrap_admin` after deleting the old `staff` row, so keep a second admin or
+store the credentials safely.
 
 Files are not sent through the Edge Function. After verification the function creates a
 short-lived **signed upload URL**; the browser uploads directly to Storage, then the
@@ -252,8 +269,9 @@ public/
   worlds/       six duotoned WebP world images
 supabase/
   schema.sql                 tables, RLS, storage bucket
+  marking.sql                staff, schools, marks (apply after schema.sql)
   functions/submit/index.ts  Turnstile verification + service-role writes
-  functions/admin/index.ts   password-gated staff inbox
+  functions/staff/index.ts   admin-gated staff account management
 .github/
   workflows/deploy.yml
 ```

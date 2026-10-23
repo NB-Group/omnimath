@@ -1,0 +1,205 @@
+// Omnimath — staff account management (admin only).
+//
+// The browser calls this with the caller's Supabase Auth token. The function
+// verifies the token against Auth, checks the caller is an admin in
+// public.staff, and then uses the service role to manage auth users:
+//
+//   create_coordinator  { name, email, password, schoolId }
+//   set_password        { userId, password }
+//   delete_staff        { userId }
+//   bootstrap_admin     { email, password, name }   — only while no admin exists
+//
+// Deleting the auth user cascades to public.staff. School rows themselves are
+// managed by the admin directly through PostgREST (RLS restricts to admins).
+
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+const json = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+
+async function service(path: string, init?: RequestInit) {
+  return fetch(`${SUPABASE_URL}${path}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  })
+}
+
+/** Verify the caller's JWT and return their auth user id, or null. */
+async function callerId(request: Request): Promise<string | null> {
+  const header = request.headers.get('Authorization') ?? ''
+  const token = header.startsWith('Bearer ') ? header.slice(7).trim() : ''
+  if (!token) return null
+  const response = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) return null
+  const user = await response.json().catch(() => null)
+  return typeof user?.id === 'string' ? user.id : null
+}
+
+async function isAdmin(userId: string): Promise<boolean> {
+  const response = await service(
+    `/rest/v1/staff?id=eq.${encodeURIComponent(userId)}&role=eq.admin&select=id`,
+  )
+  if (!response.ok) return false
+  const rows = await response.json().catch(() => [])
+  return Array.isArray(rows) && rows.length > 0
+}
+
+async function adminExists(): Promise<boolean> {
+  const response = await service(
+    '/rest/v1/staff?role=eq.admin&select=id&limit=1',
+  )
+  if (!response.ok) return true // fail closed
+  const rows = await response.json().catch(() => [])
+  return Array.isArray(rows) && rows.length > 0
+}
+
+async function schoolExists(schoolId: string): Promise<boolean> {
+  const response = await service(
+    `/rest/v1/schools?id=eq.${encodeURIComponent(schoolId)}&select=id`,
+  )
+  if (!response.ok) return false
+  const rows = await response.json().catch(() => [])
+  return Array.isArray(rows) && rows.length > 0
+}
+
+async function createAuthUser(input: {
+  email: string
+  password: string
+  name: string
+}): Promise<{ id: string } | { error: string }> {
+  const response = await service('/auth/v1/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: input.email,
+      password: input.password,
+      email_confirm: true,
+      user_metadata: { full_name: input.name },
+    }),
+  })
+  const data = await response.json().catch(() => null)
+  if (!response.ok) {
+    const code = data?.code ?? data?.msg ?? data?.error_code ?? ''
+    if (typeof code === 'string' && code.includes('already')) {
+      return { error: 'email_taken' }
+    }
+    return { error: 'auth_failed' }
+  }
+  return { id: data.id }
+}
+
+function clean(value: unknown, max: number): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+Deno.serve(async (request) => {
+  if (request.method !== 'POST') return json(405, { error: 'method' })
+
+  let body: Record<string, unknown>
+  try {
+    body = await request.json()
+  } catch {
+    return json(400, { error: 'body' })
+  }
+
+  const action = clean(body.action, 40)
+  const email = clean(body.email, 320).toLowerCase()
+  const password = typeof body.password === 'string' ? body.password : ''
+  const name = clean(body.name, 200)
+  const userId = clean(body.userId, 64)
+  const schoolId = clean(body.schoolId, 64)
+
+  // Each action states which fields it needs; global checks are limited to
+  // shape, and per-action checks reject missing values below.
+  const needsEmail = action === 'bootstrap_admin' || action === 'create_coordinator'
+  const needsPassword = needsEmail || action === 'set_password'
+  if (needsEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(400, { error: 'email' })
+  if (needsPassword && password.length < 10) return json(400, { error: 'weak_password' })
+
+  // Bootstrap: the very first admin account, so the system can start without
+  // a service key on the client. Disables itself once an admin exists.
+  if (action === 'bootstrap_admin') {
+    if (await adminExists()) return json(403, { error: 'bootstrap_closed' })
+    if (name.length < 1) return json(400, { error: 'name' })
+    const created = await createAuthUser({ email, password, name })
+    if ('error' in created) return json(400, { error: created.error })
+    const insert = await service('/rest/v1/staff', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: created.id,
+        email,
+        name,
+        role: 'admin',
+        school_id: null,
+      }),
+    })
+    if (!insert.ok) return json(500, { error: 'insert_failed' })
+    return json(200, { ok: true })
+  }
+
+  const caller = await callerId(request)
+  if (!caller) return json(401, { error: 'unauthorized' })
+  if (!(await isAdmin(caller))) return json(403, { error: 'forbidden' })
+
+  switch (action) {
+    case 'create_coordinator': {
+      if (name.length < 1) return json(400, { error: 'name' })
+      if (!schoolId) return json(400, { error: 'school' })
+      if (!(await schoolExists(schoolId))) return json(400, { error: 'school' })
+      const created = await createAuthUser({ email, password, name })
+      if ('error' in created) return json(400, { error: created.error })
+      const insert = await service('/rest/v1/staff', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: created.id,
+          email,
+          name,
+          role: 'coordinator',
+          school_id: schoolId,
+        }),
+      })
+      if (!insert.ok) return json(500, { error: 'insert_failed' })
+      return json(200, { ok: true })
+    }
+
+    case 'set_password': {
+      if (!userId) return json(400, { error: 'user' })
+      const update = await service(`/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ password }),
+      })
+      if (!update.ok) return json(400, { error: 'auth_failed' })
+      return json(200, { ok: true })
+    }
+
+    case 'delete_staff': {
+      if (!userId) return json(400, { error: 'user' })
+      if (userId === caller) return json(400, { error: 'self_delete' })
+      const remove = await service(`/auth/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+      })
+      // The auth delete cascades to public.staff; a 404 means it was already
+      // gone from auth, in which case clean up the staff row directly.
+      if (!remove.ok && remove.status !== 404) {
+        return json(400, { error: 'auth_failed' })
+      }
+      await service(`/rest/v1/staff?id=eq.${encodeURIComponent(userId)}`, {
+        method: 'DELETE',
+      })
+      return json(200, { ok: true })
+    }
+
+    default:
+      return json(400, { error: 'action' })
+  }
+})

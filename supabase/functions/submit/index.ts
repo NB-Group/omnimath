@@ -214,10 +214,25 @@ Deno.serve(async (request) => {
     const name = clean(body.name, 200)
     const email = clean(body.email, 320)
     const school = clean(body.school, 200)
+    const schoolId = clean(body.schoolId, 64)
     const link = clean(body.link, 1000)
     const notes = clean(body.notes, 4000)
     const year = Number(body.year)
     const challenge = Number(body.challenge)
+
+    // schoolId must name a real school; the school column keeps the display
+    // name so rows stay readable even without an account link.
+    let schoolName: string | null = null
+    if (schoolId) {
+      if (!UUID_RE.test(schoolId)) return json({ error: 'invalid_fields' }, 400)
+      const { data: schoolRow } = await admin
+        .from('schools')
+        .select('name')
+        .eq('id', schoolId)
+        .maybeSingle()
+      if (!schoolRow) return json({ error: 'invalid_fields' }, 400)
+      schoolName = clean(schoolRow.name, 200)
+    }
 
     if (
       !name ||
@@ -254,7 +269,10 @@ Deno.serve(async (request) => {
       }
 
       fileName = rawName
-      filePath = `${year}/${crypto.randomUUID()}-${safeFileName(rawName)}`
+      // School-scoped folder: the storage RLS policies let a coordinator read
+      // only files whose first folder is their own school id.
+      const folder = schoolId || String(year)
+      filePath = `${folder}/${crypto.randomUUID()}-${safeFileName(rawName)}`
     }
 
     if (!filePath && !link) return json({ error: 'file_or_link_required' }, 400)
@@ -293,7 +311,8 @@ Deno.serve(async (request) => {
         student_name: name,
         email,
         year_level: year,
-        school: school || null,
+        school: schoolName ?? school ?? null,
+        school_id: schoolId || null,
         challenge_number: challenge,
         work_link: link || null,
         notes: notes || null,

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowUpRight,
@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { PageIntro, Reveal, Eyebrow } from '../components/ui'
-import { submitWork, type WorkPayload, type WorkResult } from '../lib/supabase'
+import { getSupabase, submitWork, type WorkPayload, type WorkResult } from '../lib/supabase'
 import { yearChallengeRanges, type YearLevel } from '../lib/site'
 import { worlds } from '../data/worlds'
 import { cn } from '../lib/utils'
@@ -44,6 +44,25 @@ export function Submit() {
   const [failure, setFailure] = useState('')
   const [token, setToken] = useState<string | null>(null)
   const [resetSignal, setResetSignal] = useState(0)
+  const [schools, setSchools] = useState<{ id: string; name: string }[] | null>(null)
+  const [schoolId, setSchoolId] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    getSupabase().then((client) => {
+      if (!client || cancelled) return
+      client
+        .from('schools')
+        .select('id, name')
+        .order('name')
+        .then(({ data }) => {
+          if (!cancelled) setSchools((data ?? []) as { id: string; name: string }[])
+        })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const challengeOptions = useMemo(() => {
     if (!year) return Array.from({ length: 15 }, (_, index) => index + 1)
@@ -83,6 +102,7 @@ export function Submit() {
       email: String(data.get('email') ?? ''),
       year: Number(year),
       school: String(data.get('school') ?? ''),
+      schoolId: schoolId && schoolId !== 'other' ? schoolId : '',
       challenge: Number(challenge),
       link: String(data.get('link') ?? ''),
       notes: String(data.get('notes') ?? ''),
@@ -125,6 +145,7 @@ export function Submit() {
     formRef.current?.reset()
     setYear('')
     setChallenge('')
+    setSchoolId('')
     setFile(null)
     if (fileRef.current) fileRef.current.value = ''
     setResult(null)
@@ -320,13 +341,51 @@ export function Submit() {
                 </select>
               </Field>
               <Field label="School (optional)" htmlFor="submit-school">
-                <input
-                  id="submit-school"
-                  name="school"
-                  autoComplete="organization"
-                  className={inputClass}
-                  placeholder="School name"
-                />
+                {schools && schools.length > 0 ? (
+                  <>
+                    {schoolId === 'other' ? (
+                      <input
+                        id="submit-school"
+                        name="school"
+                        autoComplete="organization"
+                        className={inputClass}
+                        placeholder="Type your school's name"
+                      />
+                    ) : (
+                      <select
+                        id="submit-school"
+                        className={inputClass}
+                        value={schoolId}
+                        onChange={(event) => setSchoolId(event.target.value)}
+                      >
+                        <option value="">Choose a school</option>
+                        {schools.map((school) => (
+                          <option key={school.id} value={school.id}>
+                            {school.name}
+                          </option>
+                        ))}
+                        <option value="other">My school is not listed…</option>
+                      </select>
+                    )}
+                    {schoolId === 'other' ? (
+                      <button
+                        type="button"
+                        onClick={() => setSchoolId('')}
+                        className="mt-1.5 text-left text-xs text-navy underline-offset-2 hover:underline"
+                      >
+                        ← Back to the school list
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <input
+                    id="submit-school"
+                    name="school"
+                    autoComplete="organization"
+                    className={inputClass}
+                    placeholder="School name"
+                  />
+                )}
               </Field>
             </div>
 

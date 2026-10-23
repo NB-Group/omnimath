@@ -11,7 +11,7 @@ let clientPromise: Promise<SupabaseClient | null> | null = null
  * initial bundle. The site is fully usable without a backend: forms fall
  * back to a prefilled email draft.
  */
-async function getSupabase(): Promise<SupabaseClient | null> {
+export async function getSupabase(): Promise<SupabaseClient | null> {
   if (!url || !anonKey) return null
   if (!clientPromise) {
     clientPromise = import('@supabase/supabase-js').then(({ createClient }) =>
@@ -154,6 +154,8 @@ export type WorkPayload = {
   email: string
   year: number
   school?: string
+  /** Selected school id, when the student picked a listed school. */
+  schoolId?: string
   challenge: number
   link?: string
   notes?: string
@@ -207,6 +209,7 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
         year: payload.year,
         challenge: payload.challenge,
         school: payload.school ?? '',
+        schoolId: payload.schoolId ?? '',
         link: payload.link ?? '',
         notes: payload.notes ?? '',
         turnstileToken: payload.turnstileToken ?? '',
@@ -266,7 +269,7 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
 
   if (payload.file) {
     const safeName = payload.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-80)
-    filePath = `${payload.year}/${crypto.randomUUID()}-${safeName}`
+    filePath = `${payload.schoolId || payload.year}/${crypto.randomUUID()}-${safeName}`
     fileName = payload.file.name
     const { error: uploadError } = await client.storage
       .from('submissions')
@@ -288,6 +291,7 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
     email: payload.email.trim().slice(0, 320),
     year_level: payload.year,
     school: payload.school?.trim().slice(0, 200) || null,
+    school_id: payload.schoolId || null,
     challenge_number: payload.challenge,
     work_link: payload.link?.trim().slice(0, 1000) || null,
     notes: payload.notes?.trim().slice(0, 4000) || null,

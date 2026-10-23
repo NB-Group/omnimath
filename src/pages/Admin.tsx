@@ -1,25 +1,62 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { SupabaseClient, User } from '@supabase/supabase-js'
 import {
-  ArrowLeft,
+  BookOpenCheck,
+  Check,
+  ChevronLeft,
+  Copy,
   Download,
   ExternalLink,
   FileText,
   Inbox,
+  KeyRound,
   Loader2,
   Lock,
   LogOut,
   Mail,
+  Plus,
   RefreshCw,
   Search,
   ShieldCheck,
+  Trash2,
+  Users,
 } from 'lucide-react'
 import { LogoLink } from '../components/Logo'
 import { cn } from '../lib/utils'
+import {
+  callStaffFunction,
+  getStaffClient,
+  loadStaffProfile,
+  type StaffProfile,
+} from '../lib/staffClient'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-const TOKEN_KEY = 'omnimath:admin-token'
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
+
+type Mark = {
+  score: number
+  comment: string | null
+  awarded_by_name: string | null
+  updated_at: string
+}
+
+type Submission = {
+  id: string
+  created_at: string
+  student_name: string
+  email: string
+  year_level: number
+  school: string | null
+  school_id: string | null
+  challenge_number: number
+  work_link: string | null
+  notes: string | null
+  file_path: string | null
+  file_name: string | null
+  status: 'pending' | 'received'
+  marks: Mark | null
+}
 
 type Contact = {
   id: string
@@ -32,647 +69,1194 @@ type Contact = {
   message: string
 }
 
-type Submission = {
+type School = { id: string; name: string }
+
+type StaffRow = {
   id: string
-  created_at: string
-  student_name: string
   email: string
-  year_level: number
-  school: string | null
-  challenge_number: number
-  work_link: string | null
-  notes: string | null
-  file_path: string | null
-  file_name: string | null
-  status: 'pending' | 'received'
-  file_url: string | null
+  name: string
+  role: 'admin' | 'coordinator'
+  school_id: string | null
+  schools: { name: string } | null
 }
 
-type AdminData = {
-  ok: true
-  contacts: Contact[]
-  submissions: Submission[]
-  stats: { contacts: number; submissions: number; pending: number }
-  generatedAt: string
+type Tab = 'submissions' | 'messages' | 'org'
+
+/* -------------------------------------------------------------------------- */
+/* Small helpers                                                              */
+/* -------------------------------------------------------------------------- */
+
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleString('en-NZ', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+function randomPassword(): string {
+  const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('')
 }
 
-type AdminResponse = (AdminData | { ok?: false; error?: string }) & { token?: string }
-
-type Tab = 'submissions' | 'messages'
-
-type Result = { status: number; data: AdminResponse | null }
-
-async function callAdmin(body: Record<string, unknown>, token?: string): Promise<Result> {
-  if (!supabaseUrl || !anonKey) return { status: 0, data: null }
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/admin`, {
-      method: 'POST',
-      headers: {
-        apikey: anonKey,
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(body),
-    })
-    const data = (await response.json().catch(() => null)) as AdminResponse | null
-    return { status: response.status, data }
-  } catch {
-    return { status: 0, data: null }
-  }
+function csvCell(value: unknown): string {
+  const text = value == null ? '' : String(value)
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-function messageFor(result: Result): string {
-  if (!supabaseUrl || !anonKey) return 'The admin backend is not configured in this build.'
-  if (result.status === 429) return 'Too many attempts. Wait a few minutes and try again.'
-  if (result.status === 0) return 'Could not reach the admin service. Check your connection and retry.'
-  if (result.status === 503) return 'The admin service is unavailable right now. Try again shortly.'
-  if (result.data && 'error' in result.data) {
-    if (result.data.error === 'invalid_password') return 'Wrong password. Try again.'
-    if (result.data.error === 'admin_not_configured') return 'The admin password has not been configured yet.'
-  }
-  return 'That did not work. Please try again.'
-}
-
-function formatDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('en-NZ', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
-
-function safeExternalUrl(value: string | null): string | null {
-  if (!value) return null
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null
-  } catch {
-    return null
-  }
-}
-
-const inputClass =
-  'h-12 w-full rounded-xl border border-line bg-[#fffdf7] px-3.5 text-[14px] text-ink outline-none transition-[border-color,box-shadow] duration-200 placeholder:text-ink-faint/80 focus:border-navy focus:ring-2 focus:ring-navy/15'
-
-function StatusPill({ status }: { status: Submission['status'] }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.12em]',
-        status === 'received'
-          ? 'bg-leaf/15 text-leaf-deep'
-          : 'bg-sun/25 text-[#7a5a00]',
-      )}
-    >
-      <span
-        className={cn(
-          'h-1.5 w-1.5 rounded-full',
-          status === 'received' ? 'bg-leaf-deep' : 'bg-[#b8860b]',
-        )}
-      />
-      {status}
-    </span>
-  )
-}
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
 
 export function Admin() {
-  const [token, setToken] = useState<string | null>(null)
-  const [status, setStatus] = useState<'idle' | 'checking' | 'ready'>('idle')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
-  const [data, setData] = useState<AdminData | null>(null)
-  const [tab, setTab] = useState<Tab>('submissions')
-  const [query, setQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'received' | 'pending'>('all')
-  const [refreshing, setRefreshing] = useState(false)
+  const [client, setClient] = useState<SupabaseClient | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<StaffProfile | null>(null)
+  const [authError, setAuthError] = useState('')
+  const [booting, setBooting] = useState(true)
 
   useEffect(() => {
-    const previousTitle = document.title
-    document.title = 'Admin — Omnimath'
-    const meta = document.createElement('meta')
-    meta.name = 'robots'
-    meta.content = 'noindex,nofollow'
-    document.head.appendChild(meta)
-    return () => {
-      document.title = previousTitle
-      meta.remove()
-    }
-  }, [])
-
-  useEffect(() => {
-    const stored = sessionStorage.getItem(TOKEN_KEY)
-    if (!stored) return
-    setToken(stored)
-    setStatus('checking')
-    void loadOverview(stored)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  async function loadOverview(currentToken: string) {
-    setError('')
-    const result = await callAdmin({ kind: 'overview' }, currentToken)
-    if (result.status === 401) {
-      sessionStorage.removeItem(TOKEN_KEY)
-      setToken(null)
-      setData(null)
-      setStatus('idle')
-      return
-    }
-    if (result.status !== 200 || !result.data || !('ok' in result.data) || result.data.ok !== true) {
-      setError(messageFor(result))
-      setStatus('idle')
-      return
-    }
-    setData(result.data as AdminData)
-    setStatus('ready')
-  }
-
-  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!password) {
-      setError('Enter the admin password.')
-      return
-    }
-    setStatus('checking')
-    setError('')
-    const result = await callAdmin({ kind: 'login', password })
-    if (result.status === 200 && result.data && result.data.ok === true && result.data.token) {
-      sessionStorage.setItem(TOKEN_KEY, result.data.token)
-      setToken(result.data.token)
-      setPassword('')
-      await loadOverview(result.data.token)
-      return
-    }
-    setError(messageFor(result))
-    setStatus('idle')
-  }
-
-  async function refresh() {
-    if (!token) return
-    setRefreshing(true)
-    await loadOverview(token)
-    setRefreshing(false)
-  }
-
-  async function logout() {
-    if (token) await callAdmin({ kind: 'logout' }, token).catch(() => {})
-    sessionStorage.removeItem(TOKEN_KEY)
-    setToken(null)
-    setData(null)
-    setStatus('idle')
-    setPassword('')
-  }
-
-  const filteredSubmissions = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    return (data?.submissions ?? []).filter((row) => {
-      if (filter !== 'all' && row.status !== filter) return false
-      if (!needle) return true
-      return [
-        row.student_name,
-        row.email,
-        row.school ?? '',
-        `challenge ${row.challenge_number}`,
-        row.notes ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(needle)
+    let cancelled = false
+    getStaffClient().then(async (client) => {
+      if (cancelled) return
+      setClient(client)
+      if (!client) {
+        setBooting(false)
+        return
+      }
+      const { data } = await client.auth.getSession()
+      const sessionUser = data.session?.user ?? null
+      if (sessionUser) {
+        const staff = await loadStaffProfile(client, sessionUser)
+        if (cancelled) return
+        if (!staff) {
+          await client.auth.signOut()
+          setAuthError('This account does not have access to the staff console.')
+        } else {
+          setUser(sessionUser)
+          setProfile(staff)
+        }
+      }
+      setBooting(false)
     })
-  }, [data, filter, query])
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  const filteredContacts = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    if (!needle) return data?.contacts ?? []
-    return (data?.contacts ?? []).filter((row) =>
-      [row.name, row.email, row.topic, row.school ?? '', row.message]
-        .join(' ')
-        .toLowerCase()
-        .includes(needle),
-    )
-  }, [data, query])
+  const signOut = useCallback(async () => {
+    await client?.auth.signOut()
+    setUser(null)
+    setProfile(null)
+  }, [client])
 
-  const header = (
-    <header className="border-b border-line-soft bg-paper/95 backdrop-blur">
-      <div className="container-x flex h-20 items-center justify-between gap-4">
-        <LogoLink />
-        <div className="flex items-center gap-3">
-          <span className="hidden rounded-full border border-line bg-[#fffdf7] px-3 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint sm:inline-flex">
-            Staff inbox
-          </span>
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 rounded-full border border-line px-3.5 py-2 text-[12px] font-semibold text-ink-soft transition-colors hover:border-navy/30 hover:text-navy"
-          >
-            <ArrowLeft size={14} aria-hidden="true" />
-            Back to site
-          </Link>
-        </div>
-      </div>
-    </header>
-  )
-
-  if (status === 'checking' && !data) {
+  if (booting) {
     return (
-      <div className="min-h-screen bg-paper text-ink">
-        {header}
-        <div className="grid min-h-[calc(100vh-5rem)] place-items-center px-6">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-navy text-paper">
-              <Loader2 size={20} className="animate-spin" aria-hidden="true" />
-            </span>
-            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
-              Checking your session
-            </p>
-          </div>
-        </div>
+      <div className="grid min-h-screen place-items-center bg-paper">
+        <Loader2 className="animate-spin text-navy/50" size={22} />
       </div>
     )
   }
 
-  if (!data) {
+  if (!client) {
     return (
-      <div className="min-h-screen bg-paper text-ink">
-        {header}
-        <main className="container-x grid min-h-[calc(100vh-5rem)] place-items-center py-16">
-          <div className="w-full max-w-md rounded-3xl border border-line-soft bg-[#fffdf7] p-7 shadow-[0_30px_80px_-50px_rgba(0,42,94,0.45)] md:p-9">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-navy text-paper">
-              <Lock size={20} aria-hidden="true" />
-            </span>
-            <p className="mt-6 font-mono text-[9px] uppercase tracking-[0.18em] text-ink-faint">
-              Staff access
-            </p>
-            <h1 className="mt-2 font-display text-[2rem] leading-none text-ink">
-              Open the inbox.
-            </h1>
-            <p className="mt-3 text-[13px] leading-relaxed text-ink-soft">
-              Enter the admin password to read contact messages and student submissions.
-              Sessions expire automatically after 12 hours.
-            </p>
+      <Shell>
+        <div className="card">
+          <ShieldCheck size={20} className="text-navy/70" />
+          <h1 className="mt-3 font-display text-2xl">Staff console unavailable</h1>
+          <p className="mt-2 text-sm text-ink-soft">
+            The backend is not configured for this deployment.
+          </p>
+        </div>
+      </Shell>
+    )
+  }
 
-            <form onSubmit={handleLogin} className="mt-7">
-              <label
-                htmlFor="admin-password"
-                className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint"
-              >
-                Password
-              </label>
-              <div className="relative mt-2">
-                <input
-                  id="admin-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                  autoFocus
-                  className={cn(inputClass, 'pr-12')}
-                  placeholder="Admin password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                  className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-ink-faint transition-colors hover:bg-paper-deep hover:text-ink"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <ShieldCheck size={16} aria-hidden="true" />
-                  ) : (
-                    <Lock size={16} aria-hidden="true" />
-                  )}
-                </button>
-              </div>
-
-              {error ? (
-                <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-[12px] leading-relaxed text-red-700">
-                  {error}
-                </p>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={status === 'checking'}
-                className="btn btn-primary mt-5 w-full disabled:opacity-70"
-              >
-                {status === 'checking' ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                    Checking…
-                  </>
-                ) : (
-                  'Unlock inbox'
-                )}
-              </button>
-            </form>
-
-            <p className="mt-6 border-t border-line-soft pt-4 text-[10.5px] leading-relaxed text-ink-faint">
-              This page is private. Never share the password or this URL publicly.
-            </p>
-          </div>
-        </main>
-      </div>
+  if (!user || !profile) {
+    return (
+      <Shell>
+        <SignIn
+          client={client}
+          authError={authError}
+          onSignedIn={(user, profile) => {
+            setUser(user)
+            setProfile(profile)
+            setAuthError('')
+          }}
+          onError={setAuthError}
+        />
+      </Shell>
     )
   }
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
-      {header}
-      <main className="container-x py-10 md:py-14">
-        <div className="flex flex-wrap items-end justify-between gap-5">
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink-faint">
-              Omnimath staff
-            </p>
-            <h1 className="mt-2 font-display text-[clamp(2.4rem,4vw,3.4rem)] leading-none text-ink">
-              The inbox.
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={refreshing}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-line px-4 text-[12px] font-semibold text-ink-soft transition-colors hover:border-navy/30 hover:text-navy disabled:opacity-60"
-            >
-              <RefreshCw
-                size={14}
-                className={cn(refreshing && 'animate-spin')}
-                aria-hidden="true"
-              />
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={logout}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-line px-4 text-[12px] font-semibold text-ink-soft transition-colors hover:border-red-300 hover:text-red-600"
-            >
-              <LogOut size={14} aria-hidden="true" />
-              Log out
-            </button>
-          </div>
-        </div>
+    <Console
+      client={client}
+      user={user}
+      profile={profile}
+      onSignOut={signOut}
+    />
+  )
+}
 
-        {error ? (
-          <p className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12.5px] leading-relaxed text-red-700">
-            {error}
-          </p>
-        ) : null}
+/* -------------------------------------------------------------------------- */
+/* Chrome                                                                     */
+/* -------------------------------------------------------------------------- */
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-line-soft bg-[#fffdf7] p-5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">
-                Messages
-              </span>
-              <Mail size={16} className="text-navy/50" aria-hidden="true" />
-            </div>
-            <p className="mt-4 font-display text-[2.6rem] leading-none text-navy">
-              {data.stats.contacts}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-line-soft bg-[#fffdf7] p-5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">
-                Submissions
-              </span>
-              <FileText size={16} className="text-navy/50" aria-hidden="true" />
-            </div>
-            <p className="mt-4 font-display text-[2.6rem] leading-none text-navy">
-              {data.stats.submissions}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-line-soft bg-[#fffdf7] p-5">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-faint">
-                Pending files
-              </span>
-              <Inbox size={16} className="text-navy/50" aria-hidden="true" />
-            </div>
-            <p className="mt-4 font-display text-[2.6rem] leading-none text-navy">
-              {data.stats.pending}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-10 flex flex-col gap-4 border-b border-line-soft pb-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex gap-7">
-            {(
-              [
-                ['submissions', `Submissions ${data.stats.submissions}`],
-                ['messages', `Messages ${data.stats.contacts}`],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setTab(value)}
-                className={cn(
-                  'relative pb-3 text-[13px] font-semibold transition-colors',
-                  tab === value ? 'text-navy' : 'text-ink-faint hover:text-ink-soft',
-                )}
-              >
-                {label}
-                <span
-                  className={cn(
-                    'absolute inset-x-0 -bottom-4 h-[2px]',
-                    tab === value ? 'bg-navy' : 'bg-transparent',
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            {tab === 'submissions' ? (
-              <select
-                value={filter}
-                onChange={(event) =>
-                  setFilter(event.target.value as 'all' | 'received' | 'pending')
-                }
-                className="h-10 rounded-full border border-line bg-[#fffdf7] px-3 text-[12px] text-ink-soft outline-none focus:border-navy"
-                aria-label="Filter submissions by status"
-              >
-                <option value="all">All statuses</option>
-                <option value="received">Received</option>
-                <option value="pending">Pending file</option>
-              </select>
-            ) : null}
-            <label className="relative">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint"
-                aria-hidden="true"
-              />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search name, email, school…"
-                className="h-10 w-full rounded-full border border-line bg-[#fffdf7] pl-9 pr-3 text-[12px] text-ink outline-none placeholder:text-ink-faint/80 focus:border-navy sm:w-64"
-                aria-label="Search inbox"
-              />
-            </label>
-          </div>
-        </div>
-
-        {tab === 'submissions' ? (
-          <div className="mt-6 space-y-3">
-            {filteredSubmissions.length === 0 ? (
-              <EmptyState
-                icon={<FileText size={20} aria-hidden="true" />}
-                title="No submissions here."
-                body="New work will appear here as soon as a student sends it."
-              />
-            ) : (
-              filteredSubmissions.map((row) => {
-                const workUrl = safeExternalUrl(row.work_link)
-                return (
-                  <article
-                    key={row.id}
-                    className="rounded-2xl border border-line-soft bg-[#fffdf7] p-5 md:p-6"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="font-display text-[1.5rem] leading-none text-ink">
-                            {row.student_name}
-                          </h2>
-                          <StatusPill status={row.status} />
-                        </div>
-                        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-soft">
-                          <span>Year {row.year_level}</span>
-                          <span className="text-line">·</span>
-                          <span>Challenge {String(row.challenge_number).padStart(2, '0')}</span>
-                          {row.school ? (
-                            <>
-                              <span className="text-line">·</span>
-                              <span>{row.school}</span>
-                            </>
-                          ) : null}
-                        </p>
-                        <a
-                          href={`mailto:${row.email}`}
-                          className="mt-1.5 inline-block text-[12px] text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
-                        >
-                          {row.email}
-                        </a>
-                      </div>
-                      <time className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-faint">
-                        {formatDate(row.created_at)}
-                      </time>
-                    </div>
-
-                    {row.notes ? (
-                      <p className="mt-4 whitespace-pre-wrap break-words rounded-xl bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
-                        {row.notes}
-                      </p>
-                    ) : null}
-
-                    <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line-soft pt-4">
-                      {row.file_url ? (
-                        <a
-                          href={row.file_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-9 items-center gap-2 rounded-full bg-navy px-4 text-[12px] font-semibold text-paper transition-colors hover:bg-navy-deep"
-                        >
-                          <Download size={14} aria-hidden="true" />
-                          Download {row.file_name || 'file'}
-                        </a>
-                      ) : row.file_path ? (
-                        <span className="text-[11.5px] text-ink-faint">
-                          File link unavailable. Refresh to try again.
-                        </span>
-                      ) : (
-                        <span className="text-[11.5px] text-ink-faint">
-                          No file attached
-                        </span>
-                      )}
-                      {workUrl ? (
-                        <a
-                          href={workUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex h-9 items-center gap-2 rounded-full border border-line px-4 text-[12px] font-semibold text-ink-soft transition-colors hover:border-navy/30 hover:text-navy"
-                        >
-                          <ExternalLink size={14} aria-hidden="true" />
-                          Open work link
-                        </a>
-                      ) : null}
-                    </div>
-                  </article>
-                )
-              })
-            )}
-          </div>
-        ) : (
-          <div className="mt-6 space-y-3">
-            {filteredContacts.length === 0 ? (
-              <EmptyState
-                icon={<Mail size={20} aria-hidden="true" />}
-                title="No messages here."
-                body="Enquiries from the contact form will land here."
-              />
-            ) : (
-              filteredContacts.map((row) => (
-                <article
-                  key={row.id}
-                  className="rounded-2xl border border-line-soft bg-[#fffdf7] p-5 md:p-6"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <h2 className="font-display text-[1.5rem] leading-none text-ink">
-                        {row.name}
-                      </h2>
-                      <p className="mt-2 text-[12px] text-ink-soft">
-                        {row.topic}
-                        {row.role ? ` · ${row.role}` : ''}
-                        {row.school ? ` · ${row.school}` : ''}
-                      </p>
-                      <a
-                        href={`mailto:${row.email}`}
-                        className="mt-1.5 inline-block text-[12px] text-navy underline decoration-navy/25 underline-offset-2 hover:decoration-navy"
-                      >
-                        {row.email}
-                      </a>
-                    </div>
-                    <time className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-faint">
-                      {formatDate(row.created_at)}
-                    </time>
-                  </div>
-                  <p className="mt-4 whitespace-pre-wrap break-words rounded-xl bg-paper px-4 py-3 text-[13px] leading-relaxed text-ink-soft">
-                    {row.message}
-                  </p>
-                </article>
-              ))
-            )}
-          </div>
-        )}
-
-        <p className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-4 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-faint">
-          <span>Latest 100 messages and submissions</span>
-          <span>Refreshed {formatDate(data.generatedAt)}</span>
-        </p>
-      </main>
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="dot-paper min-h-screen bg-paper px-4 py-8 sm:px-8">
+      <div className="mx-auto max-w-6xl">{children}</div>
     </div>
   )
 }
 
-function EmptyState({
-  icon,
-  title,
-  body,
+function cardClass() {
+  return 'rounded-2xl border border-line bg-white/85 p-6 shadow-[0_24px_60px_-40px_rgba(6,26,56,0.35)] backdrop-blur'
+}
+
+const inputClass =
+  'w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-navy/60 focus:ring-2 focus:ring-navy/15'
+const btnPrimary =
+  'inline-flex items-center justify-center gap-2 rounded-lg bg-navy px-4 py-2 text-sm font-medium text-paper transition hover:bg-navy/90 disabled:opacity-50'
+const btnGhost =
+  'inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink transition hover:border-navy/40 disabled:opacity-50'
+
+/* -------------------------------------------------------------------------- */
+/* Sign in                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function SignIn({
+  client,
+  authError,
+  onSignedIn,
+  onError,
 }: {
-  icon: React.ReactNode
-  title: string
-  body: string
+  client: SupabaseClient
+  authError: string
+  onSignedIn: (user: User, profile: StaffProfile) => void
+  onError: (message: string) => void
 }) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (busy) return
+    setBusy(true)
+    onError('')
+    const { data, error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    })
+    if (error || !data.user) {
+      onError('That email or password is not recognised.')
+      setBusy(false)
+      return
+    }
+    const staff = await loadStaffProfile(client, data.user)
+    if (!staff) {
+      await client.auth.signOut()
+      onError('This account does not have access to the staff console.')
+      setBusy(false)
+      return
+    }
+    onSignedIn(data.user, staff)
+  }
+
   return (
-    <div className="rounded-2xl border border-dashed border-line bg-[#fffdf7]/60 px-6 py-14 text-center">
-      <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-paper-deep text-navy">
-        {icon}
-      </span>
-      <h2 className="mt-4 font-display text-[1.5rem] leading-none text-ink">{title}</h2>
-      <p className="mx-auto mt-2 max-w-sm text-[12.5px] leading-relaxed text-ink-soft">{body}</p>
+    <div className="mt-10 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
+      <div>
+        <LogoLink />
+        <h1 className="display mt-8 text-4xl sm:text-5xl">Staff console</h1>
+        <p className="mt-4 max-w-md text-ink-soft">
+          Coordinators review and mark their own school's submissions. The
+          competition admin oversees every school, the message inbox and staff
+          accounts.
+        </p>
+      </div>
+      <form onSubmit={submit} className={cardClass()}>
+        <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+          <Lock size={12} /> Sign in
+        </div>
+        <label className="mt-5 block text-sm font-medium text-ink" htmlFor="staff-email">
+          Email
+        </label>
+        <input
+          id="staff-email"
+          type="email"
+          autoComplete="email"
+          required
+          className={cn(inputClass, 'mt-1.5')}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+        />
+        <label className="mt-4 block text-sm font-medium text-ink" htmlFor="staff-password">
+          Password
+        </label>
+        <input
+          id="staff-password"
+          type="password"
+          autoComplete="current-password"
+          required
+          className={cn(inputClass, 'mt-1.5')}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+        />
+        {authError ? (
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{authError}</p>
+        ) : null}
+        <button type="submit" disabled={busy} className={cn(btnPrimary, 'mt-5 w-full')}>
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
+          Sign in
+        </button>
+      </form>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Console                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function Console({
+  client,
+  user,
+  profile,
+  onSignOut,
+}: {
+  client: SupabaseClient
+  user: User
+  profile: StaffProfile
+  onSignOut: () => void
+}) {
+  const isAdmin = profile.role === 'admin'
+  const [tab, setTab] = useState<Tab>('submissions')
+  const [schoolName, setSchoolName] = useState<string | null>(null)
+  useDocumentTitle(isAdmin ? 'Omnimath · Admin console' : 'Omnimath · Coordinator console')
+
+  useEffect(() => {
+    if (profile.school_id) {
+      client
+        .from('schools')
+        .select('name')
+        .eq('id', profile.school_id)
+        .maybeSingle()
+        .then(({ data }) => setSchoolName(data?.name ?? null))
+    }
+  }, [client, profile.school_id, isAdmin])
+
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: 'submissions', label: 'Submissions', icon: <BookOpenCheck size={14} /> },
+    ...(isAdmin
+      ? [
+          { key: 'messages' as Tab, label: 'Messages', icon: <Inbox size={14} /> },
+          { key: 'org' as Tab, label: 'Schools & staff', icon: <Users size={14} /> },
+        ]
+      : []),
+  ]
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <LogoLink />
+        </div>
+        <div className="flex items-center gap-3 text-right">
+          <div>
+            <p className="text-sm font-medium text-ink">{profile.name}</p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+              {isAdmin ? 'Admin' : `Coordinator · ${schoolName ?? profile.school_id}`}
+            </p>
+          </div>
+          <button type="button" onClick={onSignOut} className={btnGhost} title="Sign out">
+            <LogOut size={15} />
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-wrap items-center gap-2">
+        {tabs.map((entry) => (
+          <button
+            key={entry.key}
+            type="button"
+            onClick={() => setTab(entry.key)}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm transition',
+              tab === entry.key
+                ? 'border-navy bg-navy text-paper'
+                : 'border-line bg-white text-ink hover:border-navy/40',
+            )}
+          >
+            {entry.icon}
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6">
+        {tab === 'submissions' && (
+          <SubmissionsTab client={client} profile={profile} isAdmin={isAdmin} />
+        )}
+        {tab === 'messages' && isAdmin && <MessagesTab client={client} />}
+        {tab === 'org' && isAdmin && <OrgTab client={client} user={user} />}
+      </div>
+    </div>
+  )
+}
+
+function useDocumentTitle(title: string) {
+  useEffect(() => {
+    document.title = title
+  }, [title])
+}
+
+/* -------------------------------------------------------------------------- */
+/* Submissions + marking                                                      */
+/* -------------------------------------------------------------------------- */
+
+function SubmissionsTab({
+  client,
+  profile,
+  isAdmin,
+}: {
+  client: SupabaseClient
+  profile: StaffProfile
+  isAdmin: boolean
+}) {
+  const [rows, setRows] = useState<Submission[] | null>(null)
+  const [schools, setSchools] = useState<School[]>([])
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [schoolFilter, setSchoolFilter] = useState('')
+  const [selected, setSelected] = useState<Submission | null>(null)
+
+  const load = useCallback(async () => {
+    setError('')
+    setRows(null)
+    let query = client
+      .from('submissions')
+      .select(
+        'id, created_at, student_name, email, year_level, school, school_id, challenge_number, work_link, notes, file_path, file_name, status, marks(score, comment, awarded_by_name, updated_at)',
+      )
+      .order('created_at', { ascending: false })
+      .limit(500)
+    if (!isAdmin && profile.school_id) {
+      query = query.eq('school_id', profile.school_id)
+    }
+    const { data, error } = await query
+    if (error) {
+      setError('Submissions could not be loaded. Refresh to try again.')
+      setRows([])
+      return
+    }
+    setRows(
+      (data ?? []).map((row) => ({ ...row, marks: row.marks ?? null }) as unknown as Submission),
+    )
+  }, [client, isAdmin, profile.school_id])
+
+  useEffect(() => {
+    load()
+    if (isAdmin) {
+      client
+        .from('schools')
+        .select('id, name')
+        .order('name')
+        .then(({ data }) => setSchools((data ?? []) as School[]))
+    }
+  }, [load, client, isAdmin])
+
+  const filtered = useMemo(() => {
+    if (!rows) return []
+    const needle = search.trim().toLowerCase()
+    return rows.filter((row) => {
+      if (schoolFilter && row.school_id !== schoolFilter) return false
+      if (!needle) return true
+      return (
+        row.student_name.toLowerCase().includes(needle) ||
+        row.email.toLowerCase().includes(needle) ||
+        String(row.challenge_number).padStart(2, '0').includes(needle)
+      )
+    })
+  }, [rows, search, schoolFilter])
+
+  const marked = filtered.filter((row) => row.marks).length
+  const average = marked
+    ? (filtered.reduce((sum, row) => sum + (row.marks?.score ?? 0), 0) / marked).toFixed(1)
+    : '—'
+
+  const exportCsv = () => {
+    const header = [
+      'submitted_at',
+      'student',
+      'email',
+      'year',
+      'school',
+      'challenge',
+      'status',
+      'mark',
+      'marker',
+      'mark_comment',
+    ]
+    const lines = filtered.map((row) =>
+      [
+        row.created_at,
+        row.student_name,
+        row.email,
+        row.year_level,
+        row.school ?? row.school_id ?? '',
+        row.challenge_number,
+        row.status,
+        row.marks?.score ?? '',
+        row.marks?.awarded_by_name ?? '',
+        row.marks?.comment ?? '',
+      ]
+        .map(csvCell)
+        .join(','),
+    )
+    const blob = new Blob([[header.join(','), ...lines].join('\n')], {
+      type: 'text/csv;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `omnimath-submissions-${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className={cn(cardClass(), 'flex flex-wrap items-center gap-3')}>
+        <div className="relative min-w-56 flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" />
+          <input
+            className={cn(inputClass, 'pl-8')}
+            placeholder="Search student, email or challenge…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        {isAdmin ? (
+          <select
+            className={cn(inputClass, 'w-56')}
+            value={schoolFilter}
+            onChange={(event) => setSchoolFilter(event.target.value)}
+          >
+            <option value="">All schools</option>
+            {schools.map((school) => (
+              <option key={school.id} value={school.id}>
+                {school.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <button type="button" onClick={load} className={btnGhost}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+        {isAdmin ? (
+          <button type="button" onClick={exportCsv} className={btnGhost}>
+            <Download size={14} /> CSV
+          </button>
+        ) : null}
+        {rows ? (
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+            {filtered.length} shown · {marked} marked · avg {average}
+          </span>
+        ) : null}
+      </div>
+
+      {error ? (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      ) : null}
+
+      {selected ? (
+        <SubmissionDetail
+          client={client}
+          profile={profile}
+          submission={selected}
+          onClose={() => setSelected(null)}
+          onSaved={(mark) => {
+            setRows((current) =>
+              (current ?? []).map((row) =>
+                row.id === selected.id ? { ...row, marks: mark } : row,
+              ),
+            )
+            setSelected({ ...selected, marks: mark })
+          }}
+        />
+      ) : null}
+
+      <div className={cn(cardClass(), 'overflow-x-auto p-0')}>
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-line font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+              <th className="px-4 py-3">Received</th>
+              <th className="px-4 py-3">Student</th>
+              <th className="px-4 py-3">School</th>
+              <th className="px-4 py-3">Yr</th>
+              <th className="px-4 py-3">Ch</th>
+              <th className="px-4 py-3">Work</th>
+              <th className="px-4 py-3">Mark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows === null ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center">
+                  <Loader2 size={18} className="mx-auto animate-spin text-navy/50" />
+                </td>
+              </tr>
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-ink-soft">
+                  No submissions{schoolFilter ? ' for this school' : ''} yet.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((row) => (
+                <tr
+                  key={row.id}
+                  onClick={() => setSelected(row)}
+                  className="cursor-pointer border-b border-line/60 transition last:border-0 hover:bg-sun/10"
+                >
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
+                    {fmtDate(row.created_at)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-ink">{row.student_name}</span>
+                    <span className="block text-xs text-ink-faint">{row.email}</span>
+                  </td>
+                  <td className="px-4 py-3 text-ink-soft">{row.school ?? '—'}</td>
+                  <td className="px-4 py-3 text-ink-soft">{row.year_level}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-ink">
+                    {String(row.challenge_number).padStart(2, '0')}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.file_path ? (
+                      <span className="inline-flex items-center gap-1 text-navy">
+                        <FileText size={13} /> File
+                      </span>
+                    ) : row.work_link ? (
+                      <span className="inline-flex items-center gap-1 text-navy">
+                        <ExternalLink size={13} /> Link
+                      </span>
+                    ) : (
+                      <span className="text-ink-faint">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {row.marks ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-leaf/15 px-2.5 py-0.5 font-mono text-xs text-[#256b1d]">
+                        <Check size={12} /> {row.marks.score}/10
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-ink-faint">unmarked</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function SubmissionDetail({
+  client,
+  profile,
+  submission,
+  onClose,
+  onSaved,
+}: {
+  client: SupabaseClient
+  profile: StaffProfile
+  submission: Submission
+  onClose: () => void
+  onSaved: (mark: Mark) => void
+}) {
+  const [score, setScore] = useState<string>(submission.marks ? String(submission.marks.score) : '')
+  const [comment, setComment] = useState(submission.marks?.comment ?? '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [fileBusy, setFileBusy] = useState(false)
+
+  useDocumentTitle('Omnimath · Mark submission')
+
+  useEffect(() => {
+    setScore(submission.marks ? String(submission.marks.score) : '')
+    setComment(submission.marks?.comment ?? '')
+    setError('')
+  }, [submission])
+
+  const openFile = async () => {
+    if (!submission.file_path) return
+    setFileBusy(true)
+    const { data } = await client.storage
+      .from('submissions')
+      .createSignedUrl(submission.file_path, 300)
+    setFileBusy(false)
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener')
+    else setError('The file could not be opened. It may still be uploading.')
+  }
+
+  const save = async () => {
+    const value = Number(score)
+    if (!Number.isInteger(value) || value < 0 || value > 10) {
+      setError('The mark must be a whole number from 0 to 10.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    const payload = {
+      submission_id: submission.id,
+      score: value,
+      comment: comment.trim() ? comment.trim().slice(0, 2000) : null,
+      awarded_by: profile.id,
+      awarded_by_name: profile.name,
+    }
+    const { data, error } = await client
+      .from('marks')
+      .upsert(payload, { onConflict: 'submission_id' })
+      .select('score, comment, awarded_by_name, updated_at')
+      .single()
+    setBusy(false)
+    if (error || !data) {
+      setError('The mark could not be saved. Check the score and try again.')
+      return
+    }
+    onSaved(data as Mark)
+  }
+
+  return (
+    <div className={cn(cardClass(), 'border-navy/30')}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint transition hover:text-navy"
+          >
+            <ChevronLeft size={13} /> Back to list
+          </button>
+          <h2 className="mt-2 font-display text-2xl">{submission.student_name}</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            {submission.email} · Year {submission.year_level} · Challenge{' '}
+            {String(submission.challenge_number).padStart(2, '0')}
+            {submission.school ? ` · ${submission.school}` : ''}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+            Received {fmtDate(submission.created_at)} ·{' '}
+            {submission.status === 'pending' ? 'file upload pending' : 'complete'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {submission.file_path ? (
+            <button type="button" onClick={openFile} disabled={fileBusy} className={btnGhost}>
+              {fileBusy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+              Open file
+            </button>
+          ) : null}
+          {submission.work_link ? (
+            <a
+              href={submission.work_link}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={btnGhost}
+            >
+              <ExternalLink size={14} /> Open link
+            </a>
+          ) : null}
+        </div>
+      </div>
+
+      {submission.notes ? (
+        <p className="mt-4 rounded-xl bg-paper px-4 py-3 text-sm text-ink-soft">
+          {submission.notes}
+        </p>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-[120px_1fr_auto] sm:items-end">
+        <div>
+          <label
+            className="block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint"
+            htmlFor="mark-score"
+          >
+            Mark / 10
+          </label>
+          <input
+            id="mark-score"
+            type="number"
+            min={0}
+            max={10}
+            step={1}
+            className={cn(inputClass, 'mt-1.5 font-mono')}
+            value={score}
+            onChange={(event) => setScore(event.target.value)}
+          />
+        </div>
+        <div>
+          <label
+            className="block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint"
+            htmlFor="mark-comment"
+          >
+            Comment (optional)
+          </label>
+          <input
+            id="mark-comment"
+            className={cn(inputClass, 'mt-1.5')}
+            placeholder="Feedback for the student…"
+            value={comment}
+            onChange={(event) => setComment(event.target.value)}
+          />
+        </div>
+        <button type="button" onClick={save} disabled={busy} className={btnPrimary}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+          Save mark
+        </button>
+      </div>
+
+      {error ? (
+        <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+      ) : null}
+
+      {submission.marks ? (
+        <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+          Current mark {submission.marks.score}/10 by {submission.marks.awarded_by_name ?? 'staff'}{' '}
+          · updated {fmtDate(submission.marks.updated_at)}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Messages (admin)                                                           */
+/* -------------------------------------------------------------------------- */
+
+function MessagesTab({ client }: { client: SupabaseClient }) {
+  const [rows, setRows] = useState<Contact[] | null>(null)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setError('')
+    setRows(null)
+    const { data, error } = await client
+      .from('contact_messages')
+      .select('id, created_at, name, email, topic, school, role, message')
+      .order('created_at', { ascending: false })
+      .limit(300)
+    if (error) {
+      setError('Messages could not be loaded.')
+      setRows([])
+      return
+    }
+    setRows((data ?? []) as Contact[])
+  }, [client])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  return (
+    <div className="grid gap-4">
+      <div className={cn(cardClass(), 'flex items-center justify-between')}>
+        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+          {rows ? `${rows.length} messages` : 'Loading…'}
+        </span>
+        <button type="button" onClick={load} className={btnGhost}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+      </div>
+      {error ? (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      ) : null}
+      <div className="grid gap-3">
+        {rows === null ? (
+          <div className={cardClass()}>
+            <Loader2 size={18} className="mx-auto animate-spin text-navy/50" />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className={cn(cardClass(), 'text-center text-sm text-ink-soft')}>
+            <Mail size={18} className="mx-auto mb-2 text-navy/40" />
+            No messages yet.
+          </div>
+        ) : (
+          rows.map((row) => (
+            <article key={row.id} className={cardClass()}>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="font-medium text-ink">
+                  {row.name}{' '}
+                  <span className="text-sm font-normal text-ink-faint">
+                    · {row.topic}
+                    {row.school ? ` · ${row.school}` : ''}
+                  </span>
+                </h3>
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+                  {fmtDate(row.created_at)}
+                </span>
+              </div>
+              <a
+                href={`mailto:${row.email}`}
+                className="mt-1 inline-block text-sm text-navy underline-offset-2 hover:underline"
+              >
+                {row.email}
+              </a>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-ink-soft">{row.message}</p>
+            </article>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Schools & coordinators (admin)                                             */
+/* -------------------------------------------------------------------------- */
+
+function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
+  const [schools, setSchools] = useState<School[] | null>(null)
+  const [staff, setStaff] = useState<StaffRow[] | null>(null)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const [schoolName, setSchoolName] = useState('')
+  const [coordinator, setCoordinator] = useState({
+    name: '',
+    email: '',
+    schoolId: '',
+    password: randomPassword(),
+  })
+  const [busy, setBusy] = useState(false)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const [copied, setCopied] = useState(false)
+
+  const load = useCallback(async () => {
+    setError('')
+    const [schoolsResult, staffResult] = await Promise.all([
+      client.from('schools').select('id, name').order('name'),
+      client
+        .from('staff')
+        .select('id, email, name, role, school_id, schools(name)')
+        .order('created_at', { ascending: true }),
+    ])
+    if (schoolsResult.error || staffResult.error) {
+      setError('The organisation could not be loaded. Refresh to try again.')
+      return
+    }
+    setSchools((schoolsResult.data ?? []) as School[])
+    setStaff(
+      (staffResult.data ?? []).map((row) => ({ ...row, schools: row.schools ?? null }) as unknown as StaffRow),
+    )
+  }, [client])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const addSchool = async () => {
+    const name = schoolName.trim()
+    if (!name) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const { error } = await client.from('schools').insert({ name })
+    setBusy(false)
+    if (error) {
+      setError(
+        error.code === '23505' ? 'That school already exists.' : 'The school could not be added.',
+      )
+      return
+    }
+    setSchoolName('')
+    setNotice(`Added ${name}.`)
+    load()
+  }
+
+  const addCoordinator = async () => {
+    const name = coordinator.name.trim()
+    const email = coordinator.email.trim()
+    if (!name || !email || !coordinator.schoolId) {
+      setError('Fill in the coordinator name, email and school.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'create_coordinator',
+      name,
+      email,
+      password: coordinator.password,
+      schoolId: coordinator.schoolId,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      setError(
+        result.error === 'email_taken'
+          ? 'That email is already registered. Try resetting its password instead.'
+          : 'The coordinator could not be created. Check the details and try again.',
+      )
+      return
+    }
+    setCoordinator({ name: '', email: '', schoolId: '', password: randomPassword() })
+    setNotice(`Coordinator ${name} created. Share the password with them securely.`)
+    load()
+  }
+
+  const resetPassword = async (row: StaffRow) => {
+    const password = randomPassword()
+    if (
+      !window.confirm(
+        `Generate a new password for ${row.name}? The old one stops working immediately.`,
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'set_password',
+      userId: row.id,
+      password,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      setError('The password could not be reset.')
+      return
+    }
+    setNotice(`New password for ${row.name}: ${password}`)
+  }
+
+  const deleteStaff = async (row: StaffRow) => {
+    if (!window.confirm(`Remove ${row.name} (${row.email})? Their access stops immediately.`)) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'delete_staff',
+      userId: row.id,
+    })
+    setBusy(false)
+    if (!result.ok) {
+      setError('The account could not be removed.')
+      return
+    }
+    setNotice(`Removed ${row.name}.`)
+    load()
+  }
+
+  const changeOwnPassword = async () => {
+    const password = window.prompt('Choose a new password (10+ characters)') ?? ''
+    if (password.length < 10) {
+      if (password) setError('Passwords need at least 10 characters.')
+      return
+    }
+    setBusy(true)
+    const { error } = await client.auth.updateUser({ password })
+    setBusy(false)
+    if (error) {
+      setError('The password could not be changed.')
+      return
+    }
+    setNotice('Your password has been changed.')
+  }
+
+  const copyPassword = async () => {
+    if (!passwordRef.current) return
+    await navigator.clipboard.writeText(passwordRef.current.value)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {error ? (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-xl bg-leaf/15 px-4 py-3 font-mono text-sm text-[#256b1d] lg:col-span-2">
+          {notice}
+        </p>
+      ) : null}
+
+      <section className={cardClass()}>
+        <h2 className="font-display text-xl">Schools</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Submissions are scoped to these schools; coordinators see only their own.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <input
+            className={inputClass}
+            placeholder="Add a school…"
+            value={schoolName}
+            onChange={(event) => setSchoolName(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && addSchool()}
+          />
+          <button type="button" onClick={addSchool} disabled={busy} className={btnPrimary}>
+            <Plus size={14} />
+          </button>
+        </div>
+        <ul className="mt-4 divide-y divide-line">
+          {schools === null ? (
+            <li className="py-4">
+              <Loader2 size={16} className="animate-spin text-navy/50" />
+            </li>
+          ) : schools.length === 0 ? (
+            <li className="py-4 text-sm text-ink-soft">No schools yet.</li>
+          ) : (
+            schools.map((school) => (
+              <li key={school.id} className="flex items-center justify-between py-2.5 text-sm">
+                <span className="text-ink">{school.name}</span>
+                <span className="font-mono text-[10px] text-ink-faint">
+                  {(staff ?? []).filter((row) => row.school_id === school.id).length} staff
+                </span>
+              </li>
+            ))
+          )}
+        </ul>
+      </section>
+
+      <section className={cardClass()}>
+        <h2 className="font-display text-xl">Add a coordinator</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Coordinators sign in at this same address and mark their school's submissions.
+        </p>
+        <div className="mt-4 grid gap-3">
+          <input
+            className={inputClass}
+            placeholder="Coordinator name"
+            value={coordinator.name}
+            onChange={(event) =>
+              setCoordinator((state) => ({ ...state, name: event.target.value }))
+            }
+          />
+          <input
+            className={inputClass}
+            type="email"
+            placeholder="Email"
+            value={coordinator.email}
+            onChange={(event) =>
+              setCoordinator((state) => ({ ...state, email: event.target.value }))
+            }
+          />
+          <select
+            className={inputClass}
+            value={coordinator.schoolId}
+            onChange={(event) =>
+              setCoordinator((state) => ({ ...state, schoolId: event.target.value }))
+            }
+          >
+            <option value="">Choose a school…</option>
+            {(schools ?? []).map((school) => (
+              <option key={school.id} value={school.id}>
+                {school.name}
+              </option>
+            ))}
+          </select>
+          <div className="flex gap-2">
+            <input
+              ref={passwordRef}
+              className={cn(inputClass, 'font-mono')}
+              value={coordinator.password}
+              onChange={(event) =>
+                setCoordinator((state) => ({ ...state, password: event.target.value }))
+              }
+              placeholder="Password (10+ characters)"
+            />
+            <button type="button" onClick={copyPassword} className={btnGhost} title="Copy">
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </div>
+          <button type="button" onClick={addCoordinator} disabled={busy} className={btnPrimary}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Create coordinator
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={changeOwnPassword}
+          className="mt-4 inline-flex items-center gap-1.5 text-sm text-navy underline-offset-2 hover:underline"
+        >
+          <KeyRound size={13} /> Change my password ({user.email})
+        </button>
+      </section>
+
+      <section className={cn(cardClass(), 'lg:col-span-2 overflow-x-auto p-0')}>
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-line font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+              <th className="px-4 py-3">Staff</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">School</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {staff === null ? (
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center">
+                  <Loader2 size={18} className="mx-auto animate-spin text-navy/50" />
+                </td>
+              </tr>
+            ) : (
+              staff.map((row) => (
+                <tr key={row.id} className="border-b border-line/60 last:border-0">
+                  <td className="px-4 py-3">
+                    <span className="font-medium text-ink">{row.name}</span>
+                    <span className="block text-xs text-ink-faint">{row.email}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={cn(
+                        'rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-wide',
+                        row.role === 'admin'
+                          ? 'bg-sun/25 text-[#7a5c00]'
+                          : 'bg-navy/10 text-navy',
+                      )}
+                    >
+                      {row.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-ink-soft">
+                    {row.role === 'admin' ? 'All schools' : (row.schools?.name ?? '—')}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => resetPassword(row)}
+                        className={btnGhost}
+                        title="Reset password"
+                      >
+                        <KeyRound size={13} />
+                      </button>
+                      {row.id !== user.id ? (
+                        <button
+                          type="button"
+                          onClick={() => deleteStaff(row)}
+                          className={btnGhost}
+                          title="Remove account"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </section>
     </div>
   )
 }
