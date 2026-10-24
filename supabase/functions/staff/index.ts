@@ -393,12 +393,14 @@ Deno.serve(async (request) => {
 
   switch (action) {
     case 'create_invite': {
-      if (!schoolId) return json(400, { error: 'school' })
-      if (!(await schoolExists(schoolId))) return json(400, { error: 'school' })
+      const schoolName = clean(body.schoolName, 200)
+      if (!schoolName) return json(400, { error: 'school' })
+      const inviteSchoolId = await resolveSchool(schoolName)
+      if (!inviteSchoolId) return json(400, { error: 'school' })
       const code = newInviteCode()
       const insert = await service('/rest/v1/staff_invites', {
         method: 'POST',
-        body: JSON.stringify({ code, school_id: schoolId }),
+        body: JSON.stringify({ code, school_id: inviteSchoolId }),
       })
       if (!insert.ok) return json(500, { error: 'insert_failed' })
       return json(200, { ok: true, code })
@@ -470,8 +472,10 @@ Deno.serve(async (request) => {
 
     case 'create_coordinator': {
       if (name.length < 1) return json(400, { error: 'name' })
+      const schoolName = clean(body.schoolName, 200)
+      if (!schoolName) return json(400, { error: 'school' })
+      const schoolId = await resolveSchool(schoolName)
       if (!schoolId) return json(400, { error: 'school' })
-      if (!(await schoolExists(schoolId))) return json(400, { error: 'school' })
       const created = await createAuthUser({ email, password, name })
       if ('error' in created) return json(400, { error: created.error })
       const insert = await service('/rest/v1/staff', {

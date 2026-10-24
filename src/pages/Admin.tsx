@@ -1080,11 +1080,10 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
-  const [schoolName, setSchoolName] = useState('')
   const [coordinator, setCoordinator] = useState({
     name: '',
     email: '',
-    schoolId: '',
+    school: '',
     password: randomPassword(),
   })
   const [busy, setBusy] = useState(false)
@@ -1124,29 +1123,10 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
     load()
   }, [load])
 
-  const addSchool = async () => {
-    const name = schoolName.trim()
-    if (!name) return
-    setBusy(true)
-    setError('')
-    setNotice('')
-    const { error } = await client.from('schools').insert({ name })
-    setBusy(false)
-    if (error) {
-      setError(
-        error.code === '23505' ? 'That school already exists.' : 'The school could not be added.',
-      )
-      return
-    }
-    setSchoolName('')
-    setNotice(`Added ${name}.`)
-    load()
-  }
-
   const addCoordinator = async () => {
     const name = coordinator.name.trim()
     const email = coordinator.email.trim()
-    if (!name || !email || !coordinator.schoolId) {
+    if (!name || !email || !coordinator.school.trim()) {
       setError('Fill in the coordinator name, email and school.')
       return
     }
@@ -1158,7 +1138,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
       name,
       email,
       password: coordinator.password,
-      schoolId: coordinator.schoolId,
+      schoolName: coordinator.school.trim(),
     })
     setBusy(false)
     if (!result.ok) {
@@ -1166,14 +1146,58 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
         result.error === 'email_taken'
           ? 'That email is already registered — approve their application instead, or reset the password below.'
           : result.error === 'school'
-            ? 'Add the school in the Schools card first, then choose it here.'
+            ? 'Fill in the school name; new schools are registered automatically.'
             : 'The coordinator could not be created. Check the details and try again.',
       )
       return
     }
-    setCoordinator({ name: '', email: '', schoolId: '', password: randomPassword() })
-    setNotice(`Coordinator ${name} created. Share the password with them securely.`)
+    setCoordinator({ name: '', email: '', school: '', password: randomPassword() })
+    setNotice(
+      `Coordinator ${name} created for ${coordinator.school.trim()}. Share the password with them securely.`,
+    )
     load()
+  }
+
+  const deleteSchool = async (school: School) => {
+    const staffCount = (staff ?? []).filter((row) => row.school_id === school.id).length
+    const warning = staffCount
+      ? `Delete ${school.name}? This also removes its ${staffCount} coordinator account${
+          staffCount === 1 ? '' : 's'
+        } and unlinks its submissions. This cannot be undone.`
+      : `Delete ${school.name}? Its submissions lose their school link. This cannot be undone.`
+    if (!window.confirm(warning)) return
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const { error } = await client.from('schools').delete().eq('id', school.id)
+    setBusy(false)
+    if (error) {
+      setError('The school could not be deleted.')
+      return
+    }
+    setNotice(`Deleted ${school.name}.`)
+    load()
+  }
+
+  const createInvite = async () => {
+    const school = coordinator.school.trim()
+    if (!school) {
+      setError('Type the school for the invite first — it can be a new one.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const result = await callStaffFunction(client, {
+      action: 'create_invite',
+      schoolName: school,
+    })
+    setBusy(false)
+    if (!result.ok || typeof result.data?.code !== 'string') {
+      setError('The invite code could not be created.')
+      return
+    }
+    setInvite({ code: result.data.code, school })
   }
 
   const resetPassword = async (row: StaffRow) => {
@@ -1219,27 +1243,6 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
     }
     setNotice(`Removed ${row.name}.`)
     load()
-  }
-
-  const createInvite = async () => {
-    const school = (schools ?? []).find((row) => row.id === coordinator.schoolId)
-    if (!school) {
-      setError('Choose a school for the invite first.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    setNotice('')
-    const result = await callStaffFunction(client, {
-      action: 'create_invite',
-      schoolId: school.id,
-    })
-    setBusy(false)
-    if (!result.ok || typeof result.data?.code !== 'string') {
-      setError('The invite code could not be created.')
-      return
-    }
-    setInvite({ code: result.data.code, school: school.name })
   }
 
   const copyInvite = async () => {
@@ -1337,33 +1340,35 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
       <section className={cardClass()}>
         <h2 className="font-display text-xl">Schools</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Submissions are scoped to these schools; coordinators see only their own.
+          Schools appear automatically as coordinators register or are created
+          here — there is nothing to maintain by hand. Deleting one removes its
+          coordinator accounts and unlinks its submissions.
         </p>
-        <div className="mt-4 flex gap-2">
-          <input
-            className={inputClass}
-            placeholder="Add a school…"
-            value={schoolName}
-            onChange={(event) => setSchoolName(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && addSchool()}
-          />
-          <button type="button" onClick={addSchool} disabled={busy} className={btnPrimary}>
-            <Plus size={14} />
-          </button>
-        </div>
         <ul className="mt-4 divide-y divide-line">
           {schools === null ? (
             <li className="py-4">
               <Loader2 size={16} className="animate-spin text-navy/50" />
             </li>
           ) : schools.length === 0 ? (
-            <li className="py-4 text-sm text-ink-soft">No schools yet.</li>
+            <li className="py-4 text-sm text-ink-soft">
+              No schools yet — they show up when the first coordinator joins.
+            </li>
           ) : (
             schools.map((school) => (
               <li key={school.id} className="flex items-center justify-between py-2.5 text-sm">
                 <span className="text-ink">{school.name}</span>
-                <span className="font-mono text-[10px] text-ink-faint">
-                  {(staff ?? []).filter((row) => row.school_id === school.id).length} staff
+                <span className="flex items-center gap-3">
+                  <span className="font-mono text-[10px] text-ink-faint">
+                    {(staff ?? []).filter((row) => row.school_id === school.id).length} staff
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteSchool(school)}
+                    className={btnGhost}
+                    title="Delete school"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </span>
               </li>
             ))
@@ -1394,20 +1399,20 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
               setCoordinator((state) => ({ ...state, email: event.target.value }))
             }
           />
-          <select
-            className={inputClass}
-            value={coordinator.schoolId}
+          <input
+            className={cn(inputClass, 'mt-1.5')}
+            placeholder="School (typed; new schools register themselves)"
+            list="org-school-list"
+            value={coordinator.school}
             onChange={(event) =>
-              setCoordinator((state) => ({ ...state, schoolId: event.target.value }))
+              setCoordinator((state) => ({ ...state, school: event.target.value }))
             }
-          >
-            <option value="">Choose a school…</option>
+          />
+          <datalist id="org-school-list">
             {(schools ?? []).map((school) => (
-              <option key={school.id} value={school.id}>
-                {school.name}
-              </option>
+              <option key={school.id} value={school.name} />
             ))}
-          </select>
+          </datalist>
           <div className="flex gap-2">
             <input
               ref={passwordRef}
@@ -1436,7 +1441,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
           <button
             type="button"
             onClick={createInvite}
-            disabled={busy || !coordinator.schoolId}
+            disabled={busy || !coordinator.school.trim()}
             className={cn(btnGhost, 'mt-3')}
           >
             <Ticket size={14} /> Create invite code
