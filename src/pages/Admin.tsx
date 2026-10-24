@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Ticket,
   Trash2,
+  Upload,
   Users,
   X,
 } from 'lucide-react'
@@ -95,7 +96,7 @@ type ApplicationRow = {
   school_name: string
 }
 
-type Tab = 'submissions' | 'messages' | 'org'
+type Tab = 'submissions' | 'submit' | 'messages' | 'org'
 
 /* -------------------------------------------------------------------------- */
 /* Small helpers                                                              */
@@ -412,6 +413,7 @@ function Console({
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: 'submissions', label: 'Submissions', icon: <BookOpenCheck size={14} /> },
+    { key: 'submit', label: 'File work', icon: <Upload size={14} /> },
     ...(isAdmin
       ? [
           { key: 'messages' as Tab, label: 'Messages', icon: <Inbox size={14} /> },
@@ -505,6 +507,9 @@ function Console({
         >
           {tab === 'submissions' && (
             <SubmissionsTab client={client} profile={profile} isAdmin={isAdmin} />
+          )}
+          {tab === 'submit' && (
+            <SubmitTab client={client} profile={profile} schoolName={schoolName} />
           )}
           {tab === 'messages' && isAdmin && <MessagesTab client={client} />}
           {tab === 'org' && isAdmin && <OrgTab client={client} user={user} />}
@@ -694,6 +699,10 @@ function SubmissionsTab({
               )
               setSelected({ ...selected, marks: mark })
             }}
+            onDeleted={() => {
+              setRows((current) => (current ?? []).filter((row) => row.id !== selected.id))
+              setSelected(null)
+            }}
           />
         ) : null}
       </AnimatePresence>
@@ -781,18 +790,23 @@ function SubmissionDetail({
   submission,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   client: SupabaseClient
   profile: StaffProfile
   submission: Submission
   onClose: () => void
   onSaved: (mark: Mark) => void
+  onDeleted: () => void
 }) {
   const [score, setScore] = useState<string>(submission.marks ? String(submission.marks.score) : '')
   const [comment, setComment] = useState(submission.marks?.comment ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [fileBusy, setFileBusy] = useState(false)
+  const [deleteMode, setDeleteMode] = useState(false)
+  const [deleteText, setDeleteText] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
 
   useDocumentTitle('Omnimath · Mark submission')
 
@@ -842,6 +856,26 @@ function SubmissionDetail({
   }
 
   const reduced = useReducedMotion()
+  const deletePhrase = `${submission.student_name} / ${submission.school ?? 'no school'}`
+
+  const doDelete = async () => {
+    if (deleteText.trim().toLowerCase() !== deletePhrase.toLowerCase()) return
+    setDeleteBusy(true)
+    setError('')
+    if (submission.file_path) {
+      await client.storage.from('submissions').remove([submission.file_path])
+    }
+    const { error: deleteError } = await client
+      .from('submissions')
+      .delete()
+      .eq('id', submission.id)
+    setDeleteBusy(false)
+    if (deleteError) {
+      setError('The submission could not be deleted.')
+      return
+    }
+    onDeleted()
+  }
 
   return (
     <motion.section
@@ -947,6 +981,54 @@ function SubmissionDetail({
           · updated {fmtDate(submission.marks.updated_at)}
         </p>
       ) : null}
+
+      <div className="mt-6 border-t border-line pt-4">
+        {deleteMode ? (
+          <div className="rounded-xl border border-red-200 bg-red-50/60 p-4">
+            <p className="text-sm text-red-700">
+              This permanently removes the submission, its file and any mark.
+              Type <strong className="select-all">{deletePhrase}</strong> to confirm.
+            </p>
+            <input
+              className={cn(inputClass, 'mt-2 border-red-300 focus:border-red-400 focus:ring-red-100')}
+              value={deleteText}
+              placeholder={deletePhrase}
+              onChange={(event) => setDeleteText(event.target.value)}
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={doDelete}
+                disabled={
+                  deleteBusy || deleteText.trim().toLowerCase() !== deletePhrase.toLowerCase()
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
+              >
+                {deleteBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Delete permanently
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteMode(false)
+                  setDeleteText('')
+                }}
+                className={btnGhost}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setDeleteMode(true)}
+            className="inline-flex items-center gap-1.5 text-sm text-red-600 underline-offset-2 hover:underline"
+          >
+            <Trash2 size={13} /> Delete this submission…
+          </button>
+        )}
+      </div>
     </motion.section>
   )
 }
@@ -1065,6 +1147,284 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Bulk filing for students                                                   */
+/* -------------------------------------------------------------------------- */
+
+const BULK_MAX_BYTES = 10 * 1024 * 1024
+const BULK_TYPES: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+}
+
+function SubmitTab({
+  client,
+  profile,
+  schoolName,
+}: {
+  client: SupabaseClient
+  profile: StaffProfile
+  schoolName: string | null
+}) {
+  const isAdmin = profile.role === 'admin'
+  const [schools, setSchools] = useState<School[] | null>(null)
+  const [schoolInput, setSchoolInput] = useState('')
+  const [challenge, setChallenge] = useState('1')
+  const [year, setYear] = useState('5')
+  const [files, setFiles] = useState<{ id: string; file: File; student: string }[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+
+  const loadSchools = useCallback(async () => {
+    const { data } = await client.from('schools').select('id, name').order('name')
+    setSchools((data as School[] | null) ?? [])
+  }, [client])
+
+  useEffect(() => {
+    loadSchools()
+  }, [loadSchools])
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return
+    setError('')
+    const next: typeof files = []
+    for (const file of Array.from(list)) {
+      if (!BULK_TYPES[file.type]) {
+        setError(`${file.name}: only PDF, JPG and PNG files are accepted.`)
+        continue
+      }
+      if (file.size > BULK_MAX_BYTES) {
+        setError(`${file.name}: files must be 10 MB or smaller.`)
+        continue
+      }
+      next.push({
+        id: crypto.randomUUID(),
+        file,
+        // carry the previous student's name for long runs of the same person
+        student: files.length ? files[files.length - 1].student : '',
+      })
+    }
+    setFiles((current) => [...current, ...next])
+  }
+
+  const resolveAdminSchool = async (): Promise<{ id: string; name: string } | null> => {
+    const wanted = schoolInput.trim()
+    if (!wanted) {
+      setError('Type the school these files belong to.')
+      return null
+    }
+    const match = (schools ?? []).find((s) => s.name.toLowerCase() === wanted.toLowerCase())
+    if (match) return { id: match.id, name: match.name }
+    const { data, error: insertError } = await client
+      .from('schools')
+      .insert({ name: wanted })
+      .select('id, name')
+      .single()
+    if (insertError || !data) {
+      setError('The school could not be registered.')
+      return null
+    }
+    loadSchools()
+    return data as School
+  }
+
+  const submitAll = async () => {
+    if (!files.length || busy) return
+    for (const entry of files) {
+      if (!entry.student.trim()) {
+        setError('Every file needs a student name.')
+        return
+      }
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    const school = isAdmin
+      ? await resolveAdminSchool()
+      : { id: profile.school_id!, name: schoolName ?? '' }
+    if (!school) {
+      setBusy(false)
+      return
+    }
+    const failures: string[] = []
+    let done = 0
+    for (const entry of files) {
+      const safe = entry.file.name.replace(/[\\/\s]+/g, '_')
+      const path = `${school.id}/${crypto.randomUUID()}-${safe}`
+      const uploadError = await client.storage
+        .from('submissions')
+        .upload(path, entry.file, { contentType: entry.file.type })
+        .then(({ error: e }) => e)
+      if (uploadError) {
+        failures.push(`${entry.file.name}: upload failed`)
+        continue
+      }
+      const { error: insertError } = await client.from('submissions').insert({
+        student_name: entry.student.trim(),
+        email: profile.email,
+        year_level: Number(year),
+        school: school.name,
+        school_id: school.id,
+        challenge_number: Number(challenge),
+        file_path: path,
+        file_name: entry.file.name,
+        status: 'received',
+        source: 'staff console',
+      })
+      if (insertError) {
+        await client.storage.from('submissions').remove([path])
+        failures.push(`${entry.file.name}: could not be recorded`)
+        continue
+      }
+      done++
+    }
+    setBusy(false)
+    setFiles([])
+    setNotice(
+      done
+        ? `Filed ${done} ${done === 1 ? 'submission' : 'submissions'} for ${school.name}${
+            failures.length ? `; ${failures.length} failed (see below)` : '.'
+          }`
+        : 'Nothing was filed.',
+    )
+    if (failures.length) setError(failures.join(' · '))
+  }
+
+  return (
+    <div className="grid gap-4">
+      {error ? (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      ) : null}
+      {notice ? (
+        <p className="rounded-xl bg-leaf/15 px-4 py-3 font-mono text-sm text-[#256b1d]">{notice}</p>
+      ) : null}
+
+      <section className={cardClass()}>
+        <h2 className="font-display text-xl">File work for students</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Upload scanned work in bulk: each file becomes one submission, credited to
+          the student named beside it. The usual marking flow takes over from there.
+        </p>
+
+        {isAdmin ? (
+          <>
+            <label className="mt-4 block text-sm font-medium text-ink" htmlFor="bulk-school">
+              School
+            </label>
+            <input
+              id="bulk-school"
+              className={cn(inputClass, 'mt-1.5')}
+              placeholder="School (typed; new schools register themselves)"
+              list="bulk-school-list"
+              value={schoolInput}
+              onChange={(event) => setSchoolInput(event.target.value)}
+            />
+            <datalist id="bulk-school-list">
+              {(schools ?? []).map((school) => (
+                <option key={school.id} value={school.name} />
+              ))}
+            </datalist>
+          </>
+        ) : (
+          <p className="mt-4 rounded-lg bg-navy/5 px-3 py-2 text-sm text-ink-soft">
+            Filing for <strong className="text-ink">{schoolName ?? profile.school_id}</strong>
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <label className="text-sm font-medium text-ink">
+            Challenge
+            <select
+              className={cn(inputClass, 'mt-1 w-24')}
+              value={challenge}
+              onChange={(event) => setChallenge(event.target.value)}
+            >
+              {Array.from({ length: 15 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-ink">
+            Year level
+            <select
+              className={cn(inputClass, 'mt-1 w-24')}
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
+            >
+              {[5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex-1 text-sm font-medium text-ink">
+            Files
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.jpg,.jpeg,.png"
+              className={cn(inputClass, 'mt-1 cursor-pointer')}
+              onChange={(event) => {
+                addFiles(event.target.files)
+                event.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+      </section>
+
+      {files.length ? (
+        <section className={cn(cardClass(), 'p-0')}>
+          <ul className="divide-y divide-line">
+            {files.map((entry) => (
+              <li key={entry.id} className="flex items-center gap-3 px-4 py-3">
+                <FileText size={15} className="shrink-0 text-navy/60" />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink-soft" title={entry.file.name}>
+                  {entry.file.name}
+                </span>
+                <input
+                  className={cn(inputClass, 'w-52')}
+                  placeholder="Student name"
+                  value={entry.student}
+                  onChange={(event) =>
+                    setFiles((current) =>
+                      current.map((row) =>
+                        row.id === entry.id ? { ...row, student: event.target.value } : row,
+                      ),
+                    )
+                  }
+                />
+                <button
+                  type="button"
+                  className={btnGhost}
+                  title="Remove file"
+                  onClick={() => setFiles((current) => current.filter((row) => row.id !== entry.id))}
+                >
+                  <X size={13} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center justify-between px-4 py-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-faint">
+              {files.length} file{files.length === 1 ? '' : 's'} queued
+            </span>
+            <button type="button" onClick={submitAll} disabled={busy} className={btnPrimary}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              File {files.length} submission{files.length === 1 ? '' : 's'}
+            </button>
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }

@@ -148,6 +148,53 @@ create policy "coordinators read their school submissions"
     )
   );
 
+-- Deleting cleans up test or mistaken submissions: admins anywhere,
+-- coordinators only inside their own school. Marks cascade with the row.
+drop policy if exists "admins delete any submission" on public.submissions;
+create policy "admins delete any submission"
+  on public.submissions
+  for delete
+  to authenticated
+  using (public.is_staff_admin());
+
+drop policy if exists "coordinators delete their school submissions" on public.submissions;
+create policy "coordinators delete their school submissions"
+  on public.submissions
+  for delete
+  to authenticated
+  using (
+    school_id is not null
+    and exists (
+      select 1 from public.staff s
+      where s.id = auth.uid()
+        and s.role = 'coordinator'
+        and s.school_id = submissions.school_id
+    )
+  );
+
+-- Coordinators file work for their students in bulk; admins for any school.
+drop policy if exists "coordinators insert their school submissions" on public.submissions;
+create policy "coordinators insert their school submissions"
+  on public.submissions
+  for insert
+  to authenticated
+  with check (
+    school_id is not null
+    and exists (
+      select 1 from public.staff s
+      where s.id = auth.uid()
+        and s.role = 'coordinator'
+        and s.school_id = submissions.school_id
+    )
+  );
+
+drop policy if exists "admins insert any submission" on public.submissions;
+create policy "admins insert any submission"
+  on public.submissions
+  for insert
+  to authenticated
+  with check (public.is_staff_admin());
+
 -- ---------------------------------------------------------------------------
 -- Marks: one editable mark per submission
 -- ---------------------------------------------------------------------------
@@ -360,6 +407,48 @@ create policy "coordinators read own school files"
     )
   );
 
+-- File cleanup follows submission deletion; same school scoping as reads.
+drop policy if exists "coordinators delete own school files" on storage.objects;
+create policy "coordinators delete own school files"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'submissions'
+    and exists (
+      select 1 from public.staff s
+      where s.id = auth.uid()
+        and s.role = 'coordinator'
+        and s.school_id::text = (storage.foldername(name))[1]
+    )
+  );
+
+-- Bulk filing uploads straight into the school's folder.
+drop policy if exists "coordinators upload own school files" on storage.objects;
+create policy "coordinators upload own school files"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'submissions'
+    and exists (
+      select 1 from public.staff s
+      where s.id = auth.uid()
+        and s.role = 'coordinator'
+        and s.school_id::text = (storage.foldername(name))[1]
+    )
+  );
+
+drop policy if exists "admins upload submission files" on storage.objects;
+create policy "admins upload submission files"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (
+    bucket_id = 'submissions'
+    and public.is_staff_admin()
+  );
+
 -- ---------------------------------------------------------------------------
 -- Coordinator invites
 --
@@ -453,7 +542,7 @@ grant insert, update, delete on table public.schools to authenticated;
 grant select on table public.staff to authenticated;
 
 grant select on table public.contact_messages to authenticated;
-grant select on table public.submissions to authenticated;
+grant select, insert, delete on table public.submissions to authenticated;
 grant select, insert, update on table public.marks to authenticated;
 
 grant select, insert, update, delete on table public.staff_invites to authenticated;
