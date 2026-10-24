@@ -9,6 +9,7 @@
 //                          account instantly (the code carries the school),
 //                          without one the application waits for approval with
 //                          a typed school name
+//   check_invite         { code }                 → { school } — public lookup
 //   approve_application  { applicationId }   — links the staff row, registers
 //                        the typed school name (reusing a same-named school),
 //                        emails if configured
@@ -154,6 +155,18 @@ async function findInvite(code: string): Promise<{ code: string; school_id: stri
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null
 }
 
+/** The school name an invite would grant, for the register page's check step. */
+async function inviteSchool(code: string): Promise<string | null> {
+  const invite = await findInvite(code)
+  if (!invite) return null
+  const response = await service(
+    `/rest/v1/schools?id=eq.${encodeURIComponent(invite.school_id)}&select=name`,
+  )
+  if (!response.ok) return null
+  const rows = await response.json().catch(() => [])
+  return Array.isArray(rows) && typeof rows[0]?.name === 'string' ? rows[0].name : null
+}
+
 /** Same canonical siteverify contract as the submit function. */
 async function verifyTurnstile(token: string, ip: string): Promise<boolean> {
   if (!TURNSTILE_SECRET || !token || TURNSTILE_HOSTNAMES.length === 0) return false
@@ -272,6 +285,14 @@ Deno.serve(async (request) => {
   // Public coordinator registration. A valid invite code (which carries the
   // school) activates the account immediately; without one the applicant
   // types their school's name and waits for admin approval.
+  if (action === 'check_invite') {
+    const inviteCode = clean(body.code, 32).toUpperCase()
+    if (inviteCode.length !== 12) return json(400, { error: 'invite' })
+    const school = await inviteSchool(inviteCode)
+    if (!school) return json(400, { error: 'invite' })
+    return json(200, { ok: true, school })
+  }
+
   if (action === 'apply_staff') {
     if (name.length < 1) return json(400, { error: 'name' })
     const ip = (request.headers.get('x-forwarded-for') ?? '').split(',')[0].trim()
