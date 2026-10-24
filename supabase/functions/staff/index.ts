@@ -28,6 +28,20 @@
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+// The gateway does not add CORS headers for us; without these the browser's
+// preflight OPTIONS fails and every fetch from the site is blocked.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+const json = (status: number, body: Record<string, unknown>) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+
 const TURNSTILE_SECRET = Deno.env.get('TURNSTILE_SECRET_KEY') ?? ''
 const TURNSTILE_HOSTNAMES = (Deno.env.get('TURNSTILE_HOSTNAMES') ?? '')
   .split(',')
@@ -40,12 +54,6 @@ const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Omnimath <onboarding@resend.
 
 // Invite codes: unambiguous uppercase alphabet (no 0/O, 1/I, 8/B, 5/S, 2/Z).
 const INVITE_ALPHABET = 'ACDEFGHJKLMNPQRTUVWXY34679'
-
-const json = (status: number, body: Record<string, unknown>) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
 
 async function service(path: string, init?: RequestInit) {
   return fetch(`${SUPABASE_URL}${path}`, {
@@ -233,6 +241,10 @@ async function resolveSchool(schoolName: string): Promise<string | null> {
 }
 
 Deno.serve(async (request) => {
+  // Answer the browser's CORS preflight before anything else.
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders })
+  }
   if (request.method !== 'POST') return json(405, { error: 'method' })
 
   let body: Record<string, unknown>
