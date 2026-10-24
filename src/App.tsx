@@ -12,8 +12,30 @@ import { Contact } from './pages/Contact'
 import { Results } from './pages/Results'
 import { NotFound } from './pages/NotFound'
 
-const Admin = lazy(() => import('./pages/Admin').then((module) => ({ default: module.Admin })))
-const Register = lazy(() => import('./pages/Register'))
+/**
+ * After a deploy, a tab still running the old bundle asks for chunk files
+ * that no longer exist and the route white-screens. Reload once so the
+ * browser picks up the new HTML and chunk names; the flag stops a loop if
+ * the fresh bundle is also broken.
+ */
+function lazyWithRecover<T>(load: () => Promise<T>) {
+  return async () => {
+    try {
+      return await load()
+    } catch (error) {
+      if (!sessionStorage.getItem('omnimath:chunk-reload')) {
+        sessionStorage.setItem('omnimath:chunk-reload', '1')
+        window.location.reload()
+      }
+      throw error
+    }
+  }
+}
+
+const Admin = lazy(
+  lazyWithRecover(() => import('./pages/Admin').then((module) => ({ default: module.Admin }))),
+)
+const Register = lazy(lazyWithRecover(() => import('./pages/Register')))
 
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
 
