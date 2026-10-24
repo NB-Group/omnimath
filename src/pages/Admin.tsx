@@ -1091,6 +1091,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   const [copied, setCopied] = useState(false)
   const [invite, setInvite] = useState<{ code: string; school: string } | null>(null)
   const [inviteCopied, setInviteCopied] = useState(false)
+  const [inviteSchool, setInviteSchool] = useState('')
 
   const load = useCallback(async () => {
     setError('')
@@ -1180,9 +1181,9 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   }
 
   const createInvite = async () => {
-    const school = coordinator.school.trim()
+    const school = inviteSchool.trim()
     if (!school) {
-      setError('Type the school for the invite first — it can be a new one.')
+      setError('Type the school for the invite — it can be a new one.')
       return
     }
     setBusy(true)
@@ -1432,14 +1433,21 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
         <div className="mt-5 border-t border-line pt-4">
           <p className="text-sm font-medium text-ink">Or let them register themselves</p>
           <p className="mt-1 text-sm text-ink-soft">
-            Generate an invite code for the chosen school; the coordinator uses it
-            on the public register page for instant access.
+            Generate an invite code for a school; the coordinator uses it on the
+            public register page for instant access.
           </p>
+          <input
+            className={cn(inputClass, 'mt-3')}
+            placeholder="School (typed; new schools register themselves)"
+            list="org-school-list"
+            value={inviteSchool}
+            onChange={(event) => setInviteSchool(event.target.value)}
+          />
           <button
             type="button"
             onClick={createInvite}
-            disabled={busy || !coordinator.school.trim()}
-            className={cn(btnGhost, 'mt-3')}
+            disabled={busy || !inviteSchool.trim()}
+            className={cn(btnGhost, 'mt-2')}
           >
             <Ticket size={14} /> Create invite code
           </button>
