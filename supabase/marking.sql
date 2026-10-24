@@ -330,10 +330,19 @@ create policy "admins read submission files"
   to authenticated
   using (
     bucket_id = 'submissions'
-    and exists (
-      select 1 from public.staff s
-      where s.id = auth.uid() and s.role = 'admin'
-    )
+    and public.is_staff_admin()
+  );
+
+-- Admins may also remove files (e.g. cleaning up test data); the storage
+-- API refuses direct table deletes, so this is the supported path.
+drop policy if exists "admins delete submission files" on storage.objects;
+create policy "admins delete submission files"
+  on storage.objects
+  for delete
+  to authenticated
+  using (
+    bucket_id = 'submissions'
+    and public.is_staff_admin()
   );
 
 drop policy if exists "coordinators read own school files" on storage.objects;
