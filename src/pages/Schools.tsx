@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, BadgeCheck, CalendarCheck, CheckCircle2, FileText, Gift, Sparkles } from 'lucide-react'
 import { PageIntro, Reveal, SectionHeading, Eyebrow } from '../components/ui'
-import { ContactForm } from '../components/ContactForm'
 import { usePageMeta } from '../lib/usePageMeta'
 
 const steps = [
@@ -320,8 +319,39 @@ export function Schools() {
             </div>
           </div>
 
-          <ContactForm variant="coordinator" />
-        </div>
+            <div className="rounded-2xl border border-line bg-white/85 p-6 shadow-[0_24px_60px_-40px_rgba(6,26,56,0.35)]">
+              <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+                Coordinator access
+              </p>
+              <h3 className="mt-3 font-display text-2xl">Register as a coordinator</h3>
+              <p className="mt-3 text-sm text-ink-soft">
+                Coordinators mark their own school's submissions. Create your
+                account on the registration page — if you have an invite code
+                from us you can start marking straight away, otherwise we will
+                review your application and approve it.
+              </p>
+              <Link
+                to="/register"
+                className="mt-5 inline-flex items-center gap-2 rounded-lg bg-navy px-4 py-2.5 text-sm font-medium text-paper transition hover:bg-navy/90"
+              >
+                Create your coordinator account
+              </Link>
+              <p className="mt-4 border-t border-line pt-4 text-[13px] text-ink-soft">
+                Just have a question? Reach us through the{' '}
+                <Link to="/contact" className="text-navy underline-offset-2 hover:underline">
+                  contact page
+                </Link>{' '}
+                or at{' '}
+                <a
+                  href="mailto:schools@omnimath.co.nz"
+                  className="text-navy underline-offset-2 hover:underline"
+                >
+                  schools@omnimath.co.nz
+                </a>
+                .
+              </p>
+            </div>
+          </div>
       </section>
     </>
   )

@@ -958,6 +958,7 @@ function SubmissionDetail({
 function MessagesTab({ client }: { client: SupabaseClient }) {
   const [rows, setRows] = useState<Contact[] | null>(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const reduced = useReducedMotion()
 
   const load = useCallback(async () => {
@@ -993,6 +994,11 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
       {error ? (
         <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}
+      {notice ? (
+        <p className="rounded-xl bg-leaf/15 px-4 py-3 font-mono text-sm text-[#256b1d]">
+          {notice}
+        </p>
+      ) : null}
       <div className="grid gap-3">
         {rows === null ? (
           <div className={cardClass()}>
@@ -1016,6 +1022,26 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
               }}
               className={cardClass()}
             >
+              {/coordinator|school/i.test(row.topic) ? (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-sun/15 px-3 py-2">
+                  <p className="text-xs text-[#7a5c00]">
+                    They want coordinator access — point them at the registration page.
+                  </p>
+                  <button
+                    type="button"
+                    className={btnGhost}
+                    onClick={async () => {
+                      const base = `${window.location.origin}${window.location.pathname.replace(/\/admin\/?$/, '')}/register`
+                      await navigator.clipboard.writeText(
+                        `Register your coordinator account here: ${base} — with an invite code it is instant, otherwise it waits for our approval.`,
+                      )
+                      setNotice('Registration reply copied; paste it into an email.')
+                    }}
+                  >
+                    <Copy size={13} /> Copy reply
+                  </button>
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="font-medium text-ink">
                   {row.name}{' '}
