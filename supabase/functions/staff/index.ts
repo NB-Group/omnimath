@@ -124,8 +124,10 @@ async function createAuthUser(input: {
   })
   const data = await response.json().catch(() => null)
   if (!response.ok) {
-    const code = data?.code ?? data?.msg ?? data?.error_code ?? ''
-    if (typeof code === 'string' && code.includes('already')) {
+    // Supabase reports a taken email as {code: 422, msg: "... already ..."} —
+    // the numeric code must not shadow the message we match on.
+    const detail = `${data?.msg ?? ''} ${data?.error_code ?? ''} ${data?.code ?? ''}`.toLowerCase()
+    if (detail.includes('already') || detail.includes('been registered')) {
       return { error: 'email_taken' }
     }
     return { error: 'auth_failed' }

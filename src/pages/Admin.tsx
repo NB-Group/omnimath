@@ -1164,8 +1164,10 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
     if (!result.ok) {
       setError(
         result.error === 'email_taken'
-          ? 'That email is already registered. Try resetting its password instead.'
-          : 'The coordinator could not be created. Check the details and try again.',
+          ? 'That email is already registered — approve their application instead, or reset the password below.'
+          : result.error === 'school'
+            ? 'Add the school in the Schools card first, then choose it here.'
+            : 'The coordinator could not be created. Check the details and try again.',
       )
       return
     }
