@@ -286,6 +286,37 @@ create trigger marks_touch
   before update on public.marks
   for each row execute function public.touch_mark();
 
+-- Schools are derived from coordinators: once a school has no staff, no
+-- unexpired invite and no submission, it disappears by itself.
+create or replace function public.cleanup_empty_schools()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.schools s
+  where not exists (select 1 from public.staff st where st.school_id = s.id)
+    and not exists (
+      select 1 from public.staff_invites i
+      where i.school_id = s.id
+        and i.used_at is null
+        and i.expires_at > now()
+    )
+    and not exists (
+      select 1 from public.submissions sub where sub.school_id = s.id
+    );
+  return null;
+end;
+$$;
+
+revoke all on function public.cleanup_empty_schools() from public, anon, authenticated;
+
+drop trigger if exists staff_cleanup_empty_schools on public.staff;
+create trigger staff_cleanup_empty_schools
+  after delete on public.staff
+  for each row execute function public.cleanup_empty_schools();
+
 -- ---------------------------------------------------------------------------
 -- Storage: staff can open submission files
 --

@@ -1247,10 +1247,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
 
   const copyInvite = async () => {
     if (!invite) return
-    const base = `${window.location.origin}${window.location.pathname.replace(/\/admin\/?$/, '')}/register`
-    await navigator.clipboard.writeText(
-      `Register your Omnimath coordinator account for ${invite.school}: ${base} (invite code ${invite.code})`,
-    )
+    await navigator.clipboard.writeText(invite.code)
     setInviteCopied(true)
     window.setTimeout(() => setInviteCopied(false), 1200)
   }
@@ -1449,13 +1446,16 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
           {invite ? (
             <div className="mt-3 rounded-xl bg-sun/15 px-4 py-3">
               <p className="text-xs text-[#7a5c00]">
-                {invite.school} · code valid for 14 days, one use:
+                {invite.school} · code valid for 14 days, one use. Activate it at
               </p>
-              <div className="mt-1 flex items-center gap-2">
+              <p className="mt-0.5 font-mono text-xs text-ink">
+                nb-group.github.io/omnimath/register
+              </p>
+              <div className="mt-1.5 flex items-center gap-2">
                 <code className="font-mono text-base tracking-[0.18em] text-ink">
                   {invite.code}
                 </code>
-                <button type="button" onClick={copyInvite} className={btnGhost} title="Copy message">
+                <button type="button" onClick={copyInvite} className={btnGhost} title="Copy code">
                   {inviteCopied ? <Check size={13} /> : <Copy size={13} />}
                 </button>
               </div>
