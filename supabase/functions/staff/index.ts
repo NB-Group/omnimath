@@ -231,28 +231,36 @@ async function pendingApplicationExists(emailAddr: string): Promise<boolean> {
 
 /**
  * Find a school by name (case-insensitive) or create it. School names are
- * typed by registrants, so the list grows with approvals.
+ * typed by registrants, so the list grows with approvals. A concurrent
+ * create that wins the race is picked up by re-reading.
  */
 async function resolveSchool(schoolName: string): Promise<string | null> {
   const trimmed = schoolName.trim()
   if (!trimmed) return null
   const wanted = trimmed.toLowerCase()
-  const existing = await service('/rest/v1/schools?select=id,name&limit=1000&order=name')
-  if (existing.ok) {
+  const findByCase = async (): Promise<string | null> => {
+    const existing = await service(
+      `/rest/v1/schools?select=id,name&limit=5000&order=name`,
+    )
+    if (!existing.ok) return null
     const rows = await existing.json().catch(() => [])
-    if (Array.isArray(rows)) {
-      const hit = rows.find((row) => typeof row?.name === 'string' && row.name.toLowerCase() === wanted)
-      if (hit) return hit.id
-    }
+    if (!Array.isArray(rows)) return null
+    const hit = rows.find((row) => typeof row?.name === 'string' && row.name.toLowerCase() === wanted)
+    return hit?.id ?? null
   }
+  const found = await findByCase()
+  if (found) return found
   const created = await service('/rest/v1/schools', {
     method: 'POST',
     headers: { Prefer: 'return=representation' },
     body: JSON.stringify({ name: trimmed }),
   })
-  if (!created.ok) return null
+  if (!created.ok) {
+    // Another request may have created it first; re-read before failing.
+    return findByCase()
+  }
   const school = await created.json().catch(() => null)
-  return Array.isArray(school) && school[0]?.id ? school[0].id : null
+  return Array.isArray(school) && school[0]?.id ? school[0].id : findByCase()
 }
 
 Deno.serve(async (request) => {
@@ -430,14 +438,17 @@ Deno.serve(async (request) => {
         }),
       })
       if (!insert.ok) return json(500, { error: 'insert_failed' })
-      await service(`/rest/v1/staff_applications?id=eq.${encodeURIComponent(applicationId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: 'approved',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: caller,
-        }),
-      })
+      await service(
+        `/rest/v1/staff_applications?id=eq.${encodeURIComponent(applicationId)}&status=eq.pending`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'approved',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: caller,
+          }),
+        },
+      )
       const notified = await notifyApproved(application.email, application.name)
       return json(200, { ok: true, notified })
     }
@@ -459,14 +470,17 @@ Deno.serve(async (request) => {
           return json(400, { error: 'auth_failed', status: remove.status })
         }
       }
-      await service(`/rest/v1/staff_applications?id=eq.${encodeURIComponent(applicationId)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: 'rejected',
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: caller,
-        }),
-      })
+      await service(
+        `/rest/v1/staff_applications?id=eq.${encodeURIComponent(applicationId)}&status=eq.pending`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            status: 'rejected',
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: caller,
+          }),
+        },
+      )
       return json(200, { ok: true })
     }
 

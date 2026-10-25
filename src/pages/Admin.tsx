@@ -144,19 +144,27 @@ export function Admin() {
       const { data } = await client.auth.getSession()
       const sessionUser = data.session?.user ?? null
       if (sessionUser) {
-        const staff = await loadStaffProfile(client, sessionUser)
-        if (cancelled) return
-        if (!staff) {
-          await client.auth.signOut()
-          const status = await loadApplicationStatus(client, sessionUser)
-          setAuthError(
-            status === 'pending'
-              ? 'Your registration is awaiting approval. Try again once the competition admin has approved it.'
-              : 'This account does not have access to the staff console.',
-          )
-        } else {
-          setUser(sessionUser)
-          setProfile(staff)
+        try {
+          const staff = await loadStaffProfile(client, sessionUser)
+          if (cancelled) return
+          if (!staff) {
+            // read the application state before the session is destroyed
+            const status = await loadApplicationStatus(client, sessionUser)
+            if (cancelled) return
+            await client.auth.signOut()
+            setAuthError(
+              status === 'pending'
+                ? 'Your registration is awaiting approval. Try again once the competition admin has approved it.'
+                : 'This account does not have access to the staff console.',
+            )
+          } else {
+            setUser(sessionUser)
+            setProfile(staff)
+          }
+        } catch {
+          if (!cancelled) {
+            setAuthError('The staff console could not be reached. Refresh to try again.')
+          }
         }
       }
       setBooting(false)
@@ -288,10 +296,17 @@ function SignIn({
       setBusy(false)
       return
     }
-    const staff = await loadStaffProfile(client, data.user)
+    let staff: StaffProfile | null = null
+    try {
+      staff = await loadStaffProfile(client, data.user)
+    } catch {
+      onError('The staff console could not be reached. Try again.')
+      setBusy(false)
+      return
+    }
     if (!staff) {
-      await client.auth.signOut()
       const status = await loadApplicationStatus(client, data.user)
+      await client.auth.signOut()
       onError(
         status === 'pending'
           ? 'Your registration is awaiting approval. Try again once it has been approved.'
@@ -862,18 +877,21 @@ function SubmissionDetail({
     if (deleteText.trim().toLowerCase() !== deletePhrase.toLowerCase()) return
     setDeleteBusy(true)
     setError('')
-    if (submission.file_path) {
-      await client.storage.from('submissions').remove([submission.file_path])
-    }
+    // Row first: a failed row delete then leaves the file intact, whereas
+    // file-first would strand a row pointing at a destroyed file.
     const { error: deleteError } = await client
       .from('submissions')
       .delete()
       .eq('id', submission.id)
-    setDeleteBusy(false)
     if (deleteError) {
+      setDeleteBusy(false)
       setError('The submission could not be deleted.')
       return
     }
+    if (submission.file_path) {
+      await client.storage.from('submissions').remove([submission.file_path])
+    }
+    setDeleteBusy(false)
     onDeleted()
   }
 
@@ -1469,6 +1487,7 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
     ])
     if (schoolsResult.error || staffResult.error) {
       setError('The organisation could not be loaded. Refresh to try again.')
+      setApplications(applicationsResult.error ? [] : ((applicationsResult.data ?? []) as ApplicationRow[]))
       return
     }
     setSchools((schoolsResult.data ?? []) as School[])
@@ -1520,16 +1539,29 @@ function OrgTab({ client, user }: { client: SupabaseClient; user: User }) {
   }
 
   const deleteSchool = async (school: School) => {
-    const staffCount = (staff ?? []).filter((row) => row.school_id === school.id).length
-    const warning = staffCount
-      ? `Delete ${school.name}? This also removes its ${staffCount} coordinator account${
-          staffCount === 1 ? '' : 's'
-        } and unlinks its submissions. This cannot be undone.`
+    const members = (staff ?? []).filter((row) => row.school_id === school.id)
+    const warning = members.length
+      ? `Delete ${school.name}? This also removes its ${members.length} coordinator account${
+          members.length === 1 ? '' : 's'
+        } (freeing their emails to re-register) and unlinks its submissions. This cannot be undone.`
       : `Delete ${school.name}? Its submissions lose their school link. This cannot be undone.`
     if (!window.confirm(warning)) return
     setBusy(true)
     setError('')
     setNotice('')
+    // Remove the coordinators first (auth accounts and staff rows) so their
+    // emails are freed instead of stranded by the school cascade.
+    for (const member of members) {
+      const result = await callStaffFunction(client, {
+        action: 'delete_staff',
+        userId: member.id,
+      })
+      if (!result.ok) {
+        setBusy(false)
+        setError(`Could not remove ${member.name}; nothing was deleted.`)
+        return
+      }
+    }
     const { error } = await client.from('schools').delete().eq('id', school.id)
     setBusy(false)
     if (error) {

@@ -275,46 +275,13 @@ create policy "staff update marks in scope"
   for update
   to authenticated
   using (
-    exists (
-      select 1 from public.submissions sub
-      where sub.id = marks.submission_id
-        and (
-          exists (
-            select 1 from public.staff a
-            where a.id = auth.uid() and a.role = 'admin'
-          )
-          or (
-            sub.school_id is not null
-            and exists (
-              select 1 from public.staff c
-              where c.id = auth.uid()
-                and c.role = 'coordinator'
-                and c.school_id = sub.school_id
-            )
-          )
-        )
-    )
+    -- the author keeps editing their own mark; admins can override anyone's
+    awarded_by = auth.uid()
+    or public.is_staff_admin()
   )
   with check (
-    exists (
-      select 1 from public.submissions sub
-      where sub.id = marks.submission_id
-        and (
-          exists (
-            select 1 from public.staff a
-            where a.id = auth.uid() and a.role = 'admin'
-          )
-          or (
-            sub.school_id is not null
-            and exists (
-              select 1 from public.staff c
-              where c.id = auth.uid()
-                and c.role = 'coordinator'
-                and c.school_id = sub.school_id
-            )
-          )
-        )
-    )
+    awarded_by = auth.uid()
+    or public.is_staff_admin()
   );
 
 -- Keep updated_at and the marker stamp fresh on every edit.
@@ -495,7 +462,7 @@ drop table if exists public.staff_applications;
 create table if not exists public.staff_applications (
   id uuid primary key default gen_random_uuid(),
   auth_id uuid references auth.users(id) on delete set null,
-  email text not null unique check (char_length(email) between 3 and 320),
+  email text not null check (char_length(email) between 3 and 320),
   name text not null check (char_length(name) between 1 and 200),
   school_name text not null check (char_length(school_name) between 1 and 200),
   message text check (char_length(message) <= 1000),
@@ -505,6 +472,22 @@ create table if not exists public.staff_applications (
   reviewed_by uuid references auth.users(id) on delete set null
 );
 
+-- One live application per email; rejected applicants may apply again.
+do $$ declare c text;
+begin
+  select conname into c from pg_constraint
+  where conrelid = 'public.staff_applications'::regclass
+    and contype = 'u'
+    and pg_get_constraintdef(oid) ilike '%email%';
+  if c is not null then
+    execute format('alter table public.staff_applications drop constraint %I', c);
+  end if;
+end $$;
+drop index if exists staff_applications_email_pending_key;
+create unique index staff_applications_email_pending_key
+  on public.staff_applications (email)
+  where status = 'pending';
+
 comment on table public.staff_applications is
   'Self-registered coordinator accounts awaiting admin approval, with a typed school name.';
 
@@ -512,12 +495,9 @@ create index if not exists staff_applications_status_idx on public.staff_applica
 
 alter table public.staff_applications enable row level security;
 
+-- Applications are created by the staff Edge Function (Turnstile-gated);
+-- the table itself is read-only for applicants and admins.
 drop policy if exists "anyone can submit an application" on public.staff_applications;
-create policy "anyone can submit an application"
-  on public.staff_applications
-  for insert
-  to anon, authenticated
-  with check (status = 'pending');
 
 drop policy if exists "admins read applications" on public.staff_applications;
 create policy "admins read applications"
@@ -546,7 +526,7 @@ grant select, insert, delete on table public.submissions to authenticated;
 grant select, insert, update on table public.marks to authenticated;
 
 grant select, insert, update, delete on table public.staff_invites to authenticated;
-grant insert, select on table public.staff_applications to authenticated;
+grant select on table public.staff_applications to authenticated;
 
 -- The service role owns the backend flow (new projects do not grant these
 -- automatically when DDL is applied through the Management API).

@@ -38,11 +38,14 @@ export async function loadStaffProfile(
   client: SupabaseClient,
   user: User,
 ): Promise<StaffProfile | null> {
-  const { data } = await client
+  const { data, error } = await client
     .from('staff')
     .select('id, email, name, role, school_id')
     .eq('id', user.id)
     .maybeSingle()
+  // A transport failure must not read as "no such staff" — callers would
+  // sign the user out over a hiccup. Only a clean empty answer means that.
+  if (error) throw new Error(error.message)
   return (data as StaffProfile | null) ?? null
 }
 

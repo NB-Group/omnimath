@@ -39,8 +39,6 @@ export type SubmitResult =
   | { ok: true; delivered: false; mailto: string }
   | { ok: false; message: string }
 
-const TABLE = 'contact_messages'
-
 export function buildMailto(payload: MessagePayload): string {
   const to = siteMailbox(payload.topic)
   const subject = encodeURIComponent(`[Omnimath] ${payload.topic} — ${payload.name}`)
@@ -111,37 +109,17 @@ export async function submitMessage(payload: MessagePayload): Promise<SubmitResu
   }
 
   const client = await getSupabase()
-  if (!client) {
+  // Without a Turnstile key there is no accepted write path (the database
+  // only takes the verified function), so fall back to mail straight away.
+  if (!client || !turnstileEnabled) {
     return { ok: true, delivered: false, mailto: buildMailto(payload) }
   }
 
-  if (turnstileEnabled) {
-    const result = await callSubmitFunction(
-      JSON.stringify({ kind: 'contact', ...payload }),
-      { 'Content-Type': 'application/json' },
-    )
-    if (!result.ok) return { ok: false, message: functionErrorMessage(result) }
-    return { ok: true, delivered: true }
-  }
-
-  const { error } = await client.from(TABLE).insert({
-    name: payload.name.trim().slice(0, 200),
-    email: payload.email.trim().slice(0, 320),
-    topic: payload.topic.slice(0, 120),
-    school: payload.school?.trim().slice(0, 200) || null,
-    role: payload.role?.trim().slice(0, 120) || null,
-    message: payload.message.trim().slice(0, 6000),
-    source: 'website',
-  })
-
-  if (error) {
-    return {
-      ok: false,
-      message:
-        'We could not send that just now. Please try again, or email us directly at hello@omnimath.co.nz.',
-    }
-  }
-
+  const contactResult = await callSubmitFunction(
+    JSON.stringify({ kind: 'contact', ...payload }),
+    { 'Content-Type': 'application/json' },
+  )
+  if (!contactResult.ok) return { ok: false, message: functionErrorMessage(contactResult) }
   return { ok: true, delivered: true }
 }
 
@@ -191,7 +169,9 @@ export function buildWorkMailto(payload: WorkPayload): string {
 
 export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
   const client = await getSupabase()
-  if (!client) {
+  // No Turnstile key means no accepted write path (the database only takes
+  // the verified function), so hand the student a mail draft instead.
+  if (!client || !turnstileEnabled) {
     return { ok: true, delivered: false, mailto: buildWorkMailto(payload) }
   }
 
@@ -199,9 +179,8 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
     return { ok: false, message: 'That file is larger than 10 MB. Please compress it or share a link instead.' }
   }
 
-  if (turnstileEnabled) {
-    // 1. Verify Turnstile and reserve a row + signed upload URL.
-    const prepare = await callSubmitFunction(
+  // 1. Verify Turnstile and reserve a row + signed upload URL.
+  const prepare = await callSubmitFunction(
       JSON.stringify({
         kind: 'submission_prepare',
         name: payload.name,
@@ -232,10 +211,6 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
     if (!payload.file || !prepared.id) {
       return { ok: false, message: 'That submission could not be prepared. Please try again.' }
     }
-    const client = await getSupabase()
-    if (!client) {
-      return { ok: false, message: 'The submission service is unavailable. Please email us instead.' }
-    }
 
     const { error: uploadError } = await client.storage
       .from('submissions')
@@ -262,51 +237,4 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
       { 'Content-Type': 'application/json' },
     )
     return { ok: true, delivered: true }
-  }
-
-  let filePath: string | null = null
-  let fileName: string | null = null
-
-  if (payload.file) {
-    const safeName = payload.file.name.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(-80)
-    filePath = `${payload.schoolId || payload.year}/${crypto.randomUUID()}-${safeName}`
-    fileName = payload.file.name
-    const { error: uploadError } = await client.storage
-      .from('submissions')
-      .upload(filePath, payload.file, {
-        contentType: payload.file.type || 'application/octet-stream',
-        upsert: false,
-      })
-    if (uploadError) {
-      return {
-        ok: false,
-        message:
-          'We could not upload that file. Please try again, or email hello@omnimath.co.nz with your work attached.',
-      }
-    }
-  }
-
-  const { error } = await client.from('submissions').insert({
-    student_name: payload.name.trim().slice(0, 200),
-    email: payload.email.trim().slice(0, 320),
-    year_level: payload.year,
-    school: payload.school?.trim().slice(0, 200) || null,
-    school_id: payload.schoolId || null,
-    challenge_number: payload.challenge,
-    work_link: payload.link?.trim().slice(0, 1000) || null,
-    notes: payload.notes?.trim().slice(0, 4000) || null,
-    file_path: filePath,
-    file_name: fileName,
-    source: 'website',
-  })
-
-  if (error) {
-    return {
-      ok: false,
-      message:
-        'We could not record that submission. Please try again, or email hello@omnimath.co.nz with your work attached.',
-    }
-  }
-
-  return { ok: true, delivered: true }
 }

@@ -21,7 +21,10 @@ import { NotFound } from './pages/NotFound'
 function lazyWithRecover<T>(load: () => Promise<T>) {
   return async () => {
     try {
-      return await load()
+      const module = await load()
+      // the fresh chunk loaded fine; allow recovery on the next deploy too
+      sessionStorage.removeItem('omnimath:chunk-reload')
+      return module
     } catch (error) {
       if (!sessionStorage.getItem('omnimath:chunk-reload')) {
         sessionStorage.setItem('omnimath:chunk-reload', '1')
@@ -43,7 +46,17 @@ function AdminFallback() {
   return (
     <div className="grid min-h-screen place-items-center bg-paper px-6 text-center">
       <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
-        Loading staff inbox…
+        Loading staff console…
+      </p>
+    </div>
+  )
+}
+
+function RegisterFallback() {
+  return (
+    <div className="grid min-h-screen place-items-center bg-paper px-6 text-center">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+        Loading registration…
       </p>
     </div>
   )
@@ -64,7 +77,7 @@ export default function App() {
           <Route
             path="register"
             element={
-              <Suspense fallback={<AdminFallback />}>
+              <Suspense fallback={<RegisterFallback />}>
                 <Register />
               </Suspense>
             }

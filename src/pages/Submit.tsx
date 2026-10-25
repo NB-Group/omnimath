@@ -49,16 +49,16 @@ export function Submit() {
 
   useEffect(() => {
     let cancelled = false
-    getSupabase().then((client) => {
-      if (!client || cancelled) return
-      client
-        .from('schools')
-        .select('id, name')
-        .order('name')
-        .then(({ data }) => {
-          if (!cancelled) setSchools((data ?? []) as { id: string; name: string }[])
-        })
-    })
+    getSupabase()
+      .then(async (client) => {
+        if (!client) return
+        const { data } = await client.from('schools').select('id, name').order('name')
+        if (!cancelled) setSchools((data ?? []) as { id: string; name: string }[])
+      })
+      .catch(() => {
+        // the free-text school field still works without the list
+        if (!cancelled) setSchools([])
+      })
     return () => {
       cancelled = true
     }
@@ -70,7 +70,7 @@ export function Submit() {
     return Array.from({ length: range.to - range.from + 1 }, (_, index) => range.from + index)
   }, [year])
 
-  const pickFile = (next: File | null) => {
+  const pickFile = (next: File | null, resetInput?: () => void) => {
     if (!next) {
       setFile(null)
       return
@@ -79,10 +79,12 @@ export function Submit() {
     const allowedExtension = /\.(pdf|jpe?g|png)$/i.test(next.name)
     if (!allowed.includes(next.type) && !allowedExtension) {
       setErrors((current) => ({ ...current, file: 'Please choose a PDF, JPG or PNG.' }))
+      resetInput?.() // so picking the same file again still fires a change
       return
     }
     if (next.size > 10 * 1024 * 1024) {
       setErrors((current) => ({ ...current, file: 'That file is larger than 10 MB.' }))
+      resetInput?.()
       return
     }
     setErrors((current) => {
@@ -459,7 +461,11 @@ export function Submit() {
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                     className="sr-only"
-                    onChange={(event) => pickFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      pickFile(event.target.files?.[0] ?? null, () => {
+                        event.target.value = ''
+                      })
+                    }}
                   />
                 </label>
               )}
