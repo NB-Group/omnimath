@@ -31,11 +31,8 @@ create index if not exists contact_messages_created_at_idx
 alter table public.contact_messages enable row level security;
 
 drop policy if exists "anon can submit contact messages" on public.contact_messages;
-create policy "anon can submit contact messages"
-  on public.contact_messages
-  for insert
-  to anon, authenticated
-  with check (true);
+-- (removed: the contact form posts through the Edge Function, which checks
+-- Turnstile and rate limits; the database no longer accepts anon inserts)
 
 -- ---------------------------------------------------------------------------
 -- Online challenge submissions
@@ -68,12 +65,9 @@ create index if not exists submissions_created_at_idx
 
 alter table public.submissions enable row level security;
 
-drop policy if exists "anon can submit work" on public.submissions;
-create policy "anon can submit work"
-  on public.submissions
-  for insert
-  to anon, authenticated
-  with check (true);
+-- Anonymous writes go exclusively through the submit Edge Function
+-- (Turnstile + rate limits). The database itself only accepts inserts from
+-- logged-in staff; see marking.sql for those policies.
 
 -- ---------------------------------------------------------------------------
 -- Private storage bucket for scanned work / PDFs
@@ -91,12 +85,8 @@ on conflict (id) do update
       file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
 
-drop policy if exists "anon can upload submission files" on storage.objects;
-create policy "anon can upload submission files"
-  on storage.objects
-  for insert
-  to anon, authenticated
-  with check (bucket_id = 'submissions');
+-- Uploads happen through signed upload URLs minted by the Edge Function
+-- (service role) or by logged-in staff; no anon storage policy is needed.
 
 -- No select/update/delete policies for anon: only the dashboard or a service
 -- role can read or manage the uploaded files.
@@ -111,8 +101,8 @@ create policy "anon can upload submission files"
 -- ---------------------------------------------------------------------------
 grant usage on schema public to anon, authenticated, service_role;
 
-grant insert on table public.contact_messages to anon, authenticated;
-grant insert on table public.submissions to anon, authenticated;
+grant insert on table public.contact_messages to authenticated;
+grant insert on table public.submissions to authenticated;
 
 grant all privileges on table public.contact_messages to service_role;
 grant all privileges on table public.submissions to service_role;
