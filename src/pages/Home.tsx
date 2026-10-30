@@ -65,7 +65,8 @@ export function Home() {
       {/* Pulled up under the fixed header so the night sky starts at the very
           top of the page, behind the transparent nav bar. */}
       <section className="on-night sky-night relative -mt-[76px] overflow-hidden pt-[76px]">
-        <div className="dot-paper absolute inset-0 opacity-45" aria-hidden="true" />
+        <div className="milkyway absolute inset-0" aria-hidden="true" />
+        <div className="starfield absolute inset-0" aria-hidden="true" />
         <div
           className="pointer-events-none absolute -right-40 top-10 h-[46rem] w-[46rem] rounded-full bg-navy/45 blur-[120px]"
           aria-hidden="true"

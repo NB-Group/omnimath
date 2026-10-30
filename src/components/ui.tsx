@@ -153,7 +153,10 @@ export function PageIntro({
         dark && 'on-night',
       )}
     >
-      <div className="dot-paper absolute inset-0 opacity-40" aria-hidden="true" />
+      <div
+        className={cn('absolute inset-0', dark ? 'starfield' : 'dot-paper opacity-40')}
+        aria-hidden="true"
+      />
       <div
         className={cn(
           'pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full blur-3xl',
