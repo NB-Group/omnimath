@@ -21,6 +21,16 @@
   --color-line: #ddd5c3;
   --color-line-soft: #e9e3d5;
 
+  /* Sky palette: the site's time of day. Deepest on the homepage, easing
+     toward daylight as a visitor moves deeper in. */
+  --color-night: #050e22;
+  --color-night-mid: #081735;
+  --color-night-high: #0d2148;
+  --color-dusk: #16294f;
+  --color-dusk-mid: #22355e;
+  --color-dawn: #3b4872;
+  --color-dawn-pale: #dfe2ea;
+
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 14px;
@@ -273,6 +283,97 @@
   }
   .on-navy .rule {
     background: rgba(247, 243, 232, 0.16);
+  }
+
+  /* ------------------------------------------------------------------
+     Night sky: the homepage hero sits on it and the site lightens from
+     here. `.on-night` re-points the ink and line tokens so existing
+     `text-ink*` / `border-line*` utilities stay readable on dark, without
+     touching the light panels that sit inside the scope.
+     ------------------------------------------------------------------ */
+  .on-night {
+    color-scheme: dark;
+    --color-ink: #f6f3ea;
+    --color-ink-soft: rgba(246, 243, 234, 0.78);
+    --color-ink-faint: rgba(246, 243, 234, 0.56);
+    --color-line: rgba(246, 243, 234, 0.2);
+    --color-line-soft: rgba(246, 243, 234, 0.12);
+    color: var(--color-ink);
+  }
+  .on-night .display em,
+  .on-night .eyebrow {
+    color: var(--color-sun);
+  }
+  .on-night .btn-ghost {
+    color: #f8f4e9;
+    border-color: rgba(248, 244, 233, 0.28);
+  }
+  .on-night .btn-ghost:hover {
+    border-color: var(--color-sun);
+    background: rgba(254, 218, 18, 0.08);
+  }
+  .on-night .nav-blur {
+    background: rgba(5, 14, 34, 0.86);
+    border-color: rgba(246, 243, 234, 0.12);
+  }
+  .on-night .dot-paper {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+    background-size: 38px 38px;
+  }
+  /* Light cards keep their own ink even on the night sky. */
+  .on-night .litsurface {
+    --color-ink: #0a1f3c;
+    --color-ink-soft: #45526a;
+    --color-ink-faint: #606b7f;
+    --color-line: #ddd5c3;
+    --color-line-soft: #e9e3d5;
+    color: var(--color-ink);
+  }
+
+  /* A press of deep sky at the top of a page, ending in paper. */
+  .sky-night {
+    background-image:
+      radial-gradient(80% 60% at 76% 6%, rgba(0, 62, 138, 0.55), transparent 62%),
+      radial-gradient(60% 45% at 14% 4%, rgba(254, 218, 18, 0.1), transparent 60%),
+      linear-gradient(180deg, #050e22 0%, #071531 42%, #0a1c3f 76%, #0d2148 100%);
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+  .sky-dusk {
+    background-image: linear-gradient(
+      180deg,
+      #16294f 0%,
+      #1d3159 46%,
+      #2c3f6a 68%,
+      #6d7492 86%,
+      #faf7f0 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+  .sky-dawn {
+    background-image: linear-gradient(
+      180deg,
+      #dfe2ea 0%,
+      #eae7e0 52%,
+      #f5f1e8 78%,
+      #faf7f0 100%
+    );
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+
+  /* Translucent panel for dark skies. */
+  .glass {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: var(--radius-lg);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
+  }
+  .glass-soft {
+    background: rgba(255, 255, 255, 0.045);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
   .grid-paper {

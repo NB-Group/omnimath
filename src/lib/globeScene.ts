@@ -407,19 +407,81 @@ export function createGlobe(
   const resizeObserver = new ResizeObserver(resize)
   resizeObserver.observe(wrap)
 
-  // ---- Pointer parallax ----------------------------------------------------
+  // ---- Pointer: parallax when idle, drag to spin --------------------------
   const pointer = { x: 0, y: 0, targetX: 0, targetY: 0 }
+  const clamp = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, value))
+
+  // Where the visitor has spun the globe, on top of the slow auto-rotation.
+  let spinYaw = 0
+  let spinPitch = 0
+  let dragging = false
+  let dragId: number | null = null
+  let lastX = 0
+  let lastY = 0
+
+  // Vertical swipes still scroll the page; horizontal ones spin the globe.
+  wrap.style.touchAction = 'pan-y'
+  if (!options.reduced) wrap.style.cursor = 'grab'
+
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 && event.pointerType === 'mouse') return
+    dragging = true
+    dragId = event.pointerId
+    lastX = event.clientX
+    lastY = event.clientY
+    wrap.style.cursor = 'grabbing'
+    try {
+      wrap.setPointerCapture(event.pointerId)
+    } catch {
+      /* capture is best-effort */
+    }
+  }
+
   const onPointerMove = (event: PointerEvent) => {
+    if (dragging && event.pointerId === dragId) {
+      const dx = event.clientX - lastX
+      const dy = event.clientY - lastY
+      lastX = event.clientX
+      lastY = event.clientY
+      spinYaw += dx * 0.0062
+      spinPitch = clamp(spinPitch + dy * 0.0042, -0.55, 0.55)
+      if (options.reduced) {
+        // No render loop in reduced motion, so paint the drag directly.
+        applyTransform(0)
+        renderer.render(scene, camera)
+      }
+      return
+    }
     if (event.pointerType === 'touch') return
     const rect = wrap.getBoundingClientRect()
     pointer.targetX = ((event.clientX - rect.left) / rect.width - 0.5) * 2
     pointer.targetY = ((event.clientY - rect.top) / rect.height - 0.5) * 2
   }
+
+  const endDrag = (event: PointerEvent) => {
+    if (!dragging) return
+    if (dragId !== null && event.pointerId !== dragId) return
+    dragging = false
+    dragId = null
+    wrap.style.cursor = options.reduced ? '' : 'grab'
+    try {
+      wrap.releasePointerCapture(event.pointerId)
+    } catch {
+      /* already released */
+    }
+  }
+
   const onPointerLeave = () => {
+    if (dragging) return
     pointer.targetX = 0
     pointer.targetY = 0
   }
+
+  wrap.addEventListener('pointerdown', onPointerDown)
   wrap.addEventListener('pointermove', onPointerMove)
+  wrap.addEventListener('pointerup', endDrag)
+  wrap.addEventListener('pointercancel', endDrag)
   wrap.addEventListener('pointerleave', onPointerLeave)
 
   // ---- Render loop ---------------------------------------------------------
@@ -427,15 +489,18 @@ export function createGlobe(
   let visible = true
   let pageVisible = !document.hidden
 
-  const renderFrame = () => {
+  const applyTransform = (t: number) => {
     pointer.x += (pointer.targetX - pointer.x) * 0.06
     pointer.y += (pointer.targetY - pointer.y) * 0.06
-    const t = performance.now() / 1000
-    globeGroup.rotation.y = baseYaw + t * 0.045 + pointer.x * 0.32
-    globeGroup.rotation.x = baseTilt + pointer.y * 0.14
+    globeGroup.rotation.y = baseYaw + spinYaw + t * 0.045 + pointer.x * 0.32
+    globeGroup.rotation.x = baseTilt + spinPitch + pointer.y * 0.14
     ribbonGroup.rotation.y = pointer.x * 0.04
     ribbonGroup.rotation.x = 0.3 + pointer.y * 0.03
     root.position.y = Math.sin(t * 0.7) * 0.015
+  }
+
+  const renderFrame = () => {
+    applyTransform(performance.now() / 1000)
     renderer.render(scene, camera)
   }
 
@@ -483,8 +548,13 @@ export function createGlobe(
       resizeObserver.disconnect()
       intersectionObserver.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
+      wrap.removeEventListener('pointerdown', onPointerDown)
       wrap.removeEventListener('pointermove', onPointerMove)
+      wrap.removeEventListener('pointerup', endDrag)
+      wrap.removeEventListener('pointercancel', endDrag)
       wrap.removeEventListener('pointerleave', onPointerLeave)
+      wrap.style.cursor = ''
+      wrap.style.touchAction = ''
       coreGeometry.dispose()
       coreMaterial.dispose()
       ribbonGeometry.dispose()

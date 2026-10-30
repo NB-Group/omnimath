@@ -273,6 +273,7 @@ src/
   index.css     Tailwind theme + base styles
 public/
   worlds/       six duotoned WebP world images
+  photos/       three duotoned WebP band photographs
 supabase/
   schema.sql                 tables, RLS, storage bucket
   marking.sql                staff, schools, marks (apply after schema.sql)
@@ -285,6 +286,13 @@ supabase/
 ### Design notes
 
 - Palette from the logo: navy `#003E8A`, sun `#FEDA12`, leaf `#74C74C`, paper `#FAF7F0`.
+- The site keeps a time of day: the homepage hero is night sky (`.on-night` +
+  `.sky-night`), the About and Competition pages open on a dusk band, and deeper pages
+  fade through dawn into daylight. `PageIntro` takes a `sky` prop for this; `.on-night`
+  re-points the ink and line tokens so existing utilities stay readable on dark, and
+  `.litsurface` resets them inside white cards.
+- The globe can be dragged to spin (pointer events on the wrap, `touch-action: pan-y`
+  keeps vertical scrolling); the mark's own slow rotation continues underneath.
 - Display type is Instrument Serif; body is Inter; labels and numerals are JetBrains Mono.
 - The grain overlay, dot paper, and scroll reveals are intentional; all respect reduced
   motion.
@@ -293,8 +301,16 @@ supabase/
 
 ### Image credits
 
-The six world-card photographs are cropped and duotoned; the originals are CC0 or public
+The photographs below are cropped and duotoned; the originals are CC0 or public
 domain. Thanks to their photographers.
+
+| Where | Source on Wikimedia Commons | Author | Licence |
+| --- | --- | --- | --- |
+| Home · The work | [LOC Main Reading Room](https://commons.wikimedia.org/wiki/File:LOC_Main_Reading_Room_Highsmith.jpg) | Carol M. Highsmith | Public domain |
+| About · Aotearoa | [Skyline — Auckland, NZ](https://commons.wikimedia.org/wiki/File:Skyline_-_Auckland,_NZ_-_DSC07092.jpg) | Daderot | CC0 |
+| Submissions · Observation | [Dome of ASA AZ1500 telescope, Abastumani](https://commons.wikimedia.org/wiki/File:Dome_of_ASA_AZ1500_telescope_in_Abastumani.jpg) | Unrecognizablepineapple | CC0 |
+
+The six world-card photographs are cropped and duotoned the same way.
 
 | World | Source on Wikimedia Commons | Author | Licence |
 | --- | --- | --- | --- |

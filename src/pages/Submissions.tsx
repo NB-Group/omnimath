@@ -10,6 +10,7 @@ import {
   PenLine,
 } from 'lucide-react'
 import { PageIntro, Reveal, SectionHeading, Eyebrow } from '../components/ui'
+import { PhotoBand } from '../components/PhotoBand'
 import { cn } from '../lib/utils'
 import { usePageMeta } from '../lib/usePageMeta'
 
@@ -84,6 +85,7 @@ export function Submissions() {
     <>
       <PageIntro
         eyebrow="Submissions"
+        sky="dawn"
         title={
           <>
             Show your working.
@@ -205,19 +207,29 @@ export function Submissions() {
         </div>
       </section>
 
-      <section className="py-16 md:py-24">
-        <div className="container-x grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
-          <SectionHeading
-            eyebrow="What we look for"
-            title={
-              <>
-                Five things, every <em>time.</em>
-              </>
-            }
-            lead="The rubric is deliberately open. We are looking for the quality of thought behind the work, not a tick-box answer."
-          />
+      <PhotoBand
+        src="photos/observatory.webp"
+        alt="An observatory dome rising above the trees"
+        eyebrow="Observation"
+        line="Good evidence shows what you looked at, not only what you concluded."
+      />
 
-          <div>
+      <section className="py-16 md:py-24">
+        <div className="container-x">
+          <div className="mx-auto max-w-3xl">
+            <SectionHeading
+              align="center"
+              eyebrow="What we look for"
+              title={
+                <>
+                  Five things, every <em>time.</em>
+                </>
+              }
+              lead="The rubric is deliberately open. We are looking for the quality of thought behind the work, not a tick-box answer."
+            />
+          </div>
+
+          <div className="mx-auto mt-12 max-w-3xl">
             {criteria.map((criterion, index) => (
               <Reveal key={criterion.title} delay={index * 0.04}>
                 <div className="group flex items-start gap-4 border-b border-line py-5 first:pt-0">

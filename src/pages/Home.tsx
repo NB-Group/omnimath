@@ -5,6 +5,7 @@ import { LogoGlobe } from '../components/LogoGlobe'
 import { WorldCards } from '../components/WorldCards'
 import { BadgeSeal } from '../components/BadgeSeal'
 import { MaskedStatement } from '../components/MaskedStatement'
+import { PhotoBand } from '../components/PhotoBand'
 import { ArrowLink, Eyebrow, Formula, Magnetic, Reveal, SectionHeading, Stat } from '../components/ui'
 import { worlds } from '../data/worlds'
 import { isViewTransitionActive } from '../lib/viewTransitionState'
@@ -61,13 +62,15 @@ export function Home() {
       {/* ---------------------------------------------------------------- */}
       {/* Hero                                                              */}
       {/* ---------------------------------------------------------------- */}
-      <section className="relative overflow-hidden">
-        <div className="dot-paper absolute inset-0 opacity-50" aria-hidden="true" />
+      {/* Pulled up under the fixed header so the night sky starts at the very
+          top of the page, behind the transparent nav bar. */}
+      <section className="on-night sky-night relative -mt-[76px] overflow-hidden pt-[76px]">
+        <div className="dot-paper absolute inset-0 opacity-45" aria-hidden="true" />
         <div
-          className="pointer-events-none absolute -right-40 top-10 h-[46rem] w-[46rem] rounded-full bg-sun/10 blur-[110px]"
+          className="pointer-events-none absolute -right-40 top-10 h-[46rem] w-[46rem] rounded-full bg-navy/45 blur-[120px]"
           aria-hidden="true"
         />
-        <div className="pointer-events-none absolute -left-40 bottom-0 h-[30rem] w-[30rem] rounded-full bg-leaf/10 blur-[110px]" aria-hidden="true" />
+        <div className="pointer-events-none absolute -left-40 bottom-0 h-[30rem] w-[30rem] rounded-full bg-sun/10 blur-[120px]" aria-hidden="true" />
 
         <div className="container-x relative grid gap-8 pb-14 pt-10 md:pt-16 lg:grid-cols-[1.04fr_1fr] lg:items-center lg:gap-6 lg:pb-24">
           <div className="relative z-10">
@@ -75,7 +78,7 @@ export function Home() {
               initial={skip ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-              className="inline-flex items-center gap-2.5 rounded-full border border-line bg-white/55 px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft backdrop-blur"
+              className="inline-flex items-center gap-2.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft backdrop-blur"
             >
               <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-leaf opacity-60" />
@@ -128,9 +131,9 @@ export function Home() {
               transition={{ duration: 1, delay: 0.6 }}
               className="mt-12 grid max-w-md grid-cols-3 gap-5 border-t border-line pt-6"
             >
-              <Stat value="06" label="Challenges" />
-              <Stat value="06" label="Weeks" />
-              <Stat value="60" label="Marks" />
+              <Stat value="06" label="Challenges" valueClassName="text-sun" />
+              <Stat value="06" label="Weeks" valueClassName="text-sun" />
+              <Stat value="60" label="Marks" valueClassName="text-sun" />
             </motion.div>
           </div>
 
@@ -163,7 +166,7 @@ export function Home() {
               initial={skip ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.8, duration: 0.8 }}
-              className="absolute left-0 top-[10%] hidden animate-float rounded-xl border border-line-soft bg-[#fffdf7]/92 px-4 py-3 shadow-[0_20px_50px_-30px_rgba(6,26,56,0.5)] backdrop-blur-sm lg:block"
+              className="litsurface absolute left-0 top-[10%] hidden animate-float rounded-xl border border-line-soft bg-[#fffdf7]/95 px-4 py-3 shadow-[0_20px_50px_-30px_rgba(6,26,56,0.5)] backdrop-blur-sm lg:block"
             >
               <Formula tex={String.raw`\sum_{k=1}^{n} k = \frac{n(n+1)}{2}`} className="text-[13px] text-ink" />
               <p className="mt-1.5 font-mono text-[8.5px] uppercase tracking-[0.18em] text-ink-faint">
@@ -175,7 +178,7 @@ export function Home() {
               initial={skip ? false : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 1, duration: 0.8 }}
-              className="absolute bottom-[9%] right-0 hidden animate-float rounded-xl border border-line-soft bg-[#fffdf7]/92 px-4 py-3 shadow-[0_20px_50px_-30px_rgba(6,26,56,0.5)] backdrop-blur-sm lg:block"
+              className="litsurface absolute bottom-[9%] right-0 hidden animate-float rounded-xl border border-line-soft bg-[#fffdf7]/95 px-4 py-3 shadow-[0_20px_50px_-30px_rgba(6,26,56,0.5)] backdrop-blur-sm lg:block"
               style={{ animationDelay: '-3.4s' }}
             >
               <Formula tex={String.raw`P(A\mid B)=\frac{P(B\mid A)\,P(A)}{P(B)}`} className="text-[13px] text-ink" />
@@ -195,13 +198,13 @@ export function Home() {
         </div>
 
         {/* Marquee */}
-        <div className="mask-fade-x relative overflow-hidden border-y border-line-soft bg-paper/80 py-4">
+        <div className="mask-fade-x relative overflow-hidden border-y border-white/10 bg-white/[0.045] py-4 backdrop-blur-sm">
           <div className="flex w-max animate-marquee">
             {[0, 1].map((copy) => (
               <div key={copy} className="flex shrink-0 items-center gap-10 pr-10" aria-hidden={copy === 1}>
                 {worlds.map((world) => (
                   <span key={world.id} className="flex items-center gap-10">
-                    <span className="whitespace-nowrap font-display text-[1.35rem] text-ink/70">
+                    <span className="whitespace-nowrap font-display text-[1.35rem] text-ink/75">
                       {world.title}
                     </span>
                     <span className="text-[0.8rem] text-sun" aria-hidden="true">
@@ -213,6 +216,12 @@ export function Home() {
             ))}
           </div>
         </div>
+
+        {/* The sky eases into daylight below the fold. */}
+        <div
+          className="pointer-events-none h-28 w-full bg-gradient-to-b from-[#0d2148] via-[#5c6486] to-paper md:h-36"
+          aria-hidden="true"
+        />
       </section>
 
       {/* ---------------------------------------------------------------- */}
@@ -267,7 +276,7 @@ export function Home() {
                   <div key={item.label} className="bg-[#fffdf7] p-5">
                     <p className="display text-4xl text-navy">{item.value}</p>
                     <p className="mt-2 text-[12.5px] font-semibold text-ink">{item.label}</p>
-                    <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-faint">
+                    <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-soft">
                       {item.detail}
                     </p>
                   </div>
@@ -288,6 +297,16 @@ export function Home() {
           </div>
         </div>
       </section>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Photograph                                                        */}
+      {/* ---------------------------------------------------------------- */}
+      <PhotoBand
+        src="photos/reading-room.webp"
+        alt="A grand reading room with long rows of desks under a vaulted ceiling"
+        eyebrow="The work"
+        line="Six weeks to follow a question as far as it will go."
+      />
 
       {/* ---------------------------------------------------------------- */}
       {/* Worlds                                                            */}

@@ -43,6 +43,11 @@ export function Header() {
   const isSectionActive = (to: string) =>
     to === '/' ? location.pathname === '/' : location.pathname.startsWith(to)
 
+  // The homepage opens on the night sky; until the page scrolls (which brings
+  // the cream nav bar back over daylight content) the bar sits on dark, so its
+  // ink has to flip.
+  const night = location.pathname === '/' && !scrolled
+
   return (
     <>
       <header
@@ -54,7 +59,7 @@ export function Header() {
         )}
       >
         <div className="container-x flex h-[76px] items-center justify-between gap-6">
-          <LogoLink />
+          <LogoLink tone={night ? 'light' : 'dark'} />
 
           <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Primary">
             {navigation.map((item) => {
@@ -66,7 +71,13 @@ export function Header() {
                       to={item.to}
                       className={cn(
                         'focus-ring relative inline-flex items-center gap-1 rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors',
-                        active ? 'text-ink' : 'text-ink/70 hover:text-ink',
+                        night
+                          ? active
+                            ? 'text-paper'
+                            : 'text-paper/70 hover:text-paper'
+                          : active
+                            ? 'text-ink'
+                            : 'text-ink/70 hover:text-ink',
                       )}
                       aria-haspopup="true"
                     >
@@ -78,7 +89,8 @@ export function Header() {
                       />
                       <span
                         className={cn(
-                          'absolute inset-x-3.5 -bottom-0.5 h-px origin-left bg-navy transition-transform duration-300',
+                          'absolute inset-x-3.5 -bottom-0.5 h-px origin-left transition-transform duration-300',
+                          night ? 'bg-sun' : 'bg-navy',
                           active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100',
                         )}
                         aria-hidden="true"
@@ -122,13 +134,20 @@ export function Header() {
                   end={item.to === '/'}
                   className={cn(
                     'focus-ring group relative inline-flex items-center rounded-full px-3.5 py-2 text-[13.5px] font-medium transition-colors',
-                    active ? 'text-ink' : 'text-ink/70 hover:text-ink',
+                    night
+                      ? active
+                        ? 'text-paper'
+                        : 'text-paper/70 hover:text-paper'
+                      : active
+                        ? 'text-ink'
+                        : 'text-ink/70 hover:text-ink',
                   )}
                 >
                   {item.label}
                   <span
                     className={cn(
-                      'absolute inset-x-3.5 -bottom-0.5 h-px origin-left bg-navy transition-transform duration-300',
+                      'absolute inset-x-3.5 -bottom-0.5 h-px origin-left transition-transform duration-300',
+                      night ? 'bg-sun' : 'bg-navy',
                       active ? 'scale-x-100' : 'scale-x-0 group-hover:scale-x-100',
                     )}
                     aria-hidden="true"
@@ -142,7 +161,12 @@ export function Header() {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new CustomEvent(PALETTE_EVENT))}
-              className="focus-ring hidden items-center gap-2 rounded-full border border-line/90 bg-white/50 px-3 py-2 text-ink-faint transition-colors hover:border-navy/30 hover:text-ink md:flex"
+              className={cn(
+                'focus-ring hidden items-center gap-2 rounded-full border px-3 py-2 transition-colors md:flex',
+                night
+                  ? 'border-white/20 bg-white/10 text-paper/70 hover:border-sun/50 hover:text-paper'
+                  : 'border-line/90 bg-white/50 text-ink-faint hover:border-navy/30 hover:text-ink',
+              )}
               aria-label="Search the site (Command K)"
             >
               <Search size={14} aria-hidden="true" />
@@ -161,7 +185,10 @@ export function Header() {
             <button
               type="button"
               onClick={() => setMobileOpen(true)}
-              className="focus-ring grid h-10 w-10 place-items-center rounded-full border border-line/90 text-ink lg:hidden"
+              className={cn(
+                'focus-ring grid h-10 w-10 place-items-center rounded-full border lg:hidden',
+                night ? 'border-white/20 text-paper' : 'border-line/90 text-ink',
+              )}
               aria-label="Open menu"
               aria-expanded={mobileOpen}
             >

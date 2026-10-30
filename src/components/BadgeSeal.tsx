@@ -33,20 +33,10 @@ export function BadgeSeal({ className = '' }: { className?: string }) {
       <circle cx="120" cy="120" r="72" fill="#faf7f0" />
       <circle cx="120" cy="120" r="72" fill="none" stroke="#0a1f3c" strokeOpacity="0.08" />
       <g clipPath={`url(#badge-clip-${id})`}>
-        <image href={`${base}omnimath-logo.png`} x="56" y="86" width="128" height="84" preserveAspectRatio="xMidYMid meet" />
+        {/* Centred on the disc: the mark's globe sits at its middle. */}
+        <image href={`${base}omnimath-logo.png`} x="56" y="78" width="128" height="84" preserveAspectRatio="xMidYMid meet" />
       </g>
-      <text
-        x="120"
-        y="187"
-        textAnchor="middle"
-        fill="#003e8a"
-        fontSize="9.5"
-        fontFamily="'JetBrains Mono Variable', monospace"
-        letterSpacing="3"
-      >
-        SIX CHALLENGES
-      </text>
-      <path d="M78 196h84" stroke="#74c74c" strokeWidth="2" strokeLinecap="round" />
+      <path d="M92 170h56" stroke="#74c74c" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }

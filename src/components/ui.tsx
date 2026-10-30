@@ -131,15 +131,28 @@ export function PageIntro({
   lead,
   children,
   accent = 'sun',
+  sky = 'day',
 }: {
   eyebrow: string
   title: ReactNode
   lead?: ReactNode
   children?: ReactNode
   accent?: 'sun' | 'leaf'
+  /** Time of day for the header band: dark on the homepage, lighter deeper in. */
+  sky?: 'day' | 'dawn' | 'dusk' | 'night'
 }) {
+  const dark = sky === 'dusk' || sky === 'night'
   return (
-    <section className="relative overflow-hidden border-b border-line-soft bg-paper pt-16 md:pt-20">
+    <section
+      className={cn(
+        'relative overflow-hidden border-b pt-16 md:pt-20',
+        sky === 'day' && 'border-line-soft bg-paper',
+        sky === 'dawn' && 'sky-dawn border-line-soft',
+        sky === 'dusk' && 'sky-dusk border-line-soft/40',
+        sky === 'night' && 'sky-night border-white/10',
+        dark && 'on-night',
+      )}
+    >
       <div className="dot-paper absolute inset-0 opacity-40" aria-hidden="true" />
       <div
         className={cn(
@@ -228,15 +241,19 @@ export function Stat({
   value,
   label,
   detail,
+  valueClassName = 'text-navy',
 }: {
   value: ReactNode
   label: string
   detail?: string
+  valueClassName?: string
 }) {
   return (
     <div>
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-faint">{label}</p>
-      <p className="display mt-2 text-[2.6rem] leading-none text-navy md:text-6xl">{value}</p>
+      <p className={cn('display mt-2 text-[2.6rem] leading-none md:text-6xl', valueClassName)}>
+        {value}
+      </p>
       {detail ? <p className="mt-2 text-sm text-ink-soft">{detail}</p> : null}
     </div>
   )

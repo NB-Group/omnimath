@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, Compass, NotepadText, Sparkles } from 'lucide-react'
 import { PageIntro, Reveal, SectionHeading, Eyebrow } from '../components/ui'
+import { PhotoBand } from '../components/PhotoBand'
 import { team } from '../data/team'
 import { cn } from '../lib/utils'
 import { usePageMeta } from '../lib/usePageMeta'
@@ -42,6 +43,7 @@ export function About() {
     <>
       <PageIntro
         eyebrow="About us"
+        sky="dusk"
         title={
           <>
             Why <em>Omnimath?</em>
@@ -126,29 +128,32 @@ export function About() {
         </div>
       </section>
 
+      <PhotoBand
+        src="photos/auckland.webp"
+        alt="Auckland's skyline seen across the harbour from Devonport"
+        eyebrow="Aotearoa New Zealand"
+        line="Written here, for students here."
+        align="center"
+      />
+
       {/* Who it is for */}
       <section className="py-20 md:py-28" id="who">
         <div className="container-x">
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="mx-auto max-w-3xl">
             <SectionHeading
+              align="center"
               eyebrow="Who are we for?"
               title={
                 <>
                   Everyone who is <em>curious.</em>
                 </>
               }
-              className="max-w-2xl"
+              lead="The competition is designed for all students: those who enjoy mathematics, those who are unsure about it, and those who might simply need the opportunity to see it from a different perspective."
+              className="[&_h2]:text-[clamp(2.6rem,5.8vw,5rem)]"
             />
-            <Reveal delay={0.12}>
-              <p className="max-w-sm text-[14.5px] leading-relaxed text-ink-soft">
-                The competition is designed for all students: those who enjoy mathematics,
-                those who are unsure about it, and those who might simply need the opportunity
-                to see it from a different perspective.
-              </p>
-            </Reveal>
           </div>
 
-          <div className="mt-12 grid gap-4 md:grid-cols-3">
+          <div className="mx-auto mt-12 grid max-w-5xl gap-4 md:grid-cols-3">
             {audiences.map((audience, index) => {
               const Icon = audience.icon
               return (

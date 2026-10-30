@@ -45,6 +45,7 @@ export function Challenges() {
     <>
       <PageIntro
         eyebrow="The competition"
+        sky="dawn"
         title={
           <>
             Fifteen challenges.
