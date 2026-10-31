@@ -102,6 +102,7 @@ on conflict (id) do update
 grant usage on schema public to anon, authenticated, service_role;
 
 grant insert on table public.contact_messages to authenticated;
+grant delete on table public.contact_messages to authenticated;
 grant insert on table public.submissions to authenticated;
 
 grant all privileges on table public.contact_messages to service_role;

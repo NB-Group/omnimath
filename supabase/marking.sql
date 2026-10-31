@@ -63,6 +63,14 @@ create policy "admins read contact messages"
   to authenticated
   using (public.is_staff_admin());
 
+-- Only the competition admin may remove a message; coordinators never see them.
+drop policy if exists "admins delete contact messages" on public.contact_messages;
+create policy "admins delete contact messages"
+  on public.contact_messages
+  for delete
+  to authenticated
+  using (public.is_staff_admin());
+
 -- ---------------------------------------------------------------------------
 -- Staff (admins and school coordinators)
 --

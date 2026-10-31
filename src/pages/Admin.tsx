@@ -1081,6 +1081,23 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
     load()
   }, [load])
 
+  // Only admins can reach this tab, and the delete policy is admin-only too.
+  const deleteMessage = async (row: Contact) => {
+    if (!window.confirm(`Delete the message from ${row.name}? This cannot be undone.`)) return
+    setError('')
+    setNotice('')
+    const { error: deleteError } = await client
+      .from('contact_messages')
+      .delete()
+      .eq('id', row.id)
+    if (deleteError) {
+      setError('The message could not be deleted.')
+      return
+    }
+    setRows((current) => (current ?? []).filter((entry) => entry.id !== row.id))
+    setNotice(`Deleted the message from ${row.name}.`)
+  }
+
   return (
     <div className="grid gap-4">
       <div className={cn(cardClass(), 'flex items-center justify-between')}>
@@ -1150,8 +1167,19 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
                     {row.school ? ` · ${row.school}` : ''}
                   </span>
                 </h3>
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
-                  {fmtDate(row.created_at)}
+                <span className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-faint">
+                    {fmtDate(row.created_at)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => deleteMessage(row)}
+                    className={cn(btnGhost, '!px-2 !py-1 text-red-600 hover:border-red-300')}
+                    title="Delete message"
+                    aria-label={`Delete the message from ${row.name}`}
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </span>
               </div>
               <a
