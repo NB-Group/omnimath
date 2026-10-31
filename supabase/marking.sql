@@ -370,7 +370,7 @@ create policy "coordinators read own school files"
       select 1 from public.staff s
       where s.id = auth.uid()
         and s.role = 'coordinator'
-        and s.school_id::text = (storage.foldername(name))[1]
+        and s.school_id::text = (storage.foldername(objects.name))[1]
     )
   );
 
@@ -386,7 +386,7 @@ create policy "coordinators delete own school files"
       select 1 from public.staff s
       where s.id = auth.uid()
         and s.role = 'coordinator'
-        and s.school_id::text = (storage.foldername(name))[1]
+        and s.school_id::text = (storage.foldername(objects.name))[1]
     )
   );
 
@@ -402,7 +402,7 @@ create policy "coordinators upload own school files"
       select 1 from public.staff s
       where s.id = auth.uid()
         and s.role = 'coordinator'
-        and s.school_id::text = (storage.foldername(name))[1]
+        and s.school_id::text = (storage.foldername(objects.name))[1]
     )
   );
 
