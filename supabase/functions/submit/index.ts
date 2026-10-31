@@ -36,7 +36,16 @@ const RATE_LIMIT_SALT = Deno.env.get('RATE_LIMIT_SALT') ?? ''
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
-const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png']
+// Browsers hand back an empty type for a PDF opened through some file
+// managers, and a few report image/jpg. Storage rejects anything outside the
+// bucket's allowed_mime_types, including application/octet-stream, so the
+// extension decides what we tell the browser to upload with.
+const EXTENSION_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+}
 const MAX_FILE_BYTES = 10 * 1024 * 1024
 
 const clean = (value: unknown, max: number) => String(value ?? '').trim().slice(0, max)
@@ -254,21 +263,24 @@ Deno.serve(async (request) => {
 
     let fileName: string | null = null
     let filePath: string | null = null
+    let fileContentType: string | null = null
 
     if (fileInfo && typeof fileInfo === 'object') {
       const rawName = clean(fileInfo.name, 200)
-      const rawType = clean(fileInfo.type, 120)
+      const rawType = clean(fileInfo.type, 120).toLowerCase()
       const size = Number(fileInfo.size)
       const extension = (rawName.split('.').pop() ?? '').toLowerCase()
 
       if (!rawName || !Number.isFinite(size) || size <= 0 || size > MAX_FILE_BYTES) {
         return json({ error: 'invalid_file' }, 400)
       }
-      if (!ALLOWED_TYPES.includes(rawType) && !ALLOWED_EXTENSIONS.includes(extension)) {
+      const declared = ALLOWED_TYPES.includes(rawType) ? rawType : EXTENSION_TYPES[extension]
+      if (!declared) {
         return json({ error: 'file_type_not_allowed' }, 400)
       }
 
       fileName = rawName
+      fileContentType = declared
       // School-scoped folder: the storage RLS policies let a coordinator read
       // only files whose first folder is their own school id.
       const folder = schoolId || String(year)
@@ -340,7 +352,14 @@ Deno.serve(async (request) => {
     return json({
       ok: true,
       id: inserted.id,
-      upload: { path: filePath, token: upload.token, signedUrl: upload.signedUrl },
+      upload: {
+        path: filePath,
+        token: upload.token,
+        signedUrl: upload.signedUrl,
+        // The browser must PUT with exactly this type; Storage rejects
+        // anything outside the bucket's allowed_mime_types.
+        contentType: fileContentType ?? 'application/pdf',
+      },
     })
   }
 

@@ -13,7 +13,13 @@ import {
   X,
 } from 'lucide-react'
 import { PageIntro, Reveal, Eyebrow } from '../components/ui'
-import { getSupabase, submitWork, type WorkPayload, type WorkResult } from '../lib/supabase'
+import {
+  getSupabase,
+  resolveUploadType,
+  submitWork,
+  type WorkPayload,
+  type WorkResult,
+} from '../lib/supabase'
 import { yearChallengeRanges, type YearLevel } from '../lib/site'
 import { worlds } from '../data/worlds'
 import { cn } from '../lib/utils'
@@ -75,9 +81,7 @@ export function Submit() {
       setFile(null)
       return
     }
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png']
-    const allowedExtension = /\.(pdf|jpe?g|png)$/i.test(next.name)
-    if (!allowed.includes(next.type) && !allowedExtension) {
+    if (!resolveUploadType(next.name, next.type)) {
       setErrors((current) => ({ ...current, file: 'Please choose a PDF, JPG or PNG.' }))
       resetInput?.() // so picking the same file again still fires a change
       return

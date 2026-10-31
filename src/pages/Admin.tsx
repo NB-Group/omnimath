@@ -29,6 +29,7 @@ import {
 } from 'lucide-react'
 import { LogoLink } from '../components/Logo'
 import { cn } from '../lib/utils'
+import { resolveUploadType } from '../lib/supabase'
 import {
   callStaffFunction,
   getStaffClient,
@@ -1202,11 +1203,6 @@ function MessagesTab({ client }: { client: SupabaseClient }) {
 /* -------------------------------------------------------------------------- */
 
 const BULK_MAX_BYTES = 10 * 1024 * 1024
-const BULK_TYPES: Record<string, string> = {
-  'application/pdf': 'pdf',
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-}
 
 function SubmitTab({
   client,
@@ -1222,7 +1218,9 @@ function SubmitTab({
   const [schoolInput, setSchoolInput] = useState('')
   const [challenge, setChallenge] = useState('1')
   const [year, setYear] = useState('5')
-  const [files, setFiles] = useState<{ id: string; file: File; student: string }[]>([])
+  const [files, setFiles] = useState<
+    { id: string; file: File; type: string; student: string }[]
+  >([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -1241,7 +1239,10 @@ function SubmitTab({
     setError('')
     const next: typeof files = []
     for (const file of Array.from(list)) {
-      if (!BULK_TYPES[file.type]) {
+      // Some browsers report no type for a PDF and image/jpg for a JPEG, so
+      // the extension decides rather than File.type alone.
+      const type = resolveUploadType(file.name, file.type)
+      if (!type) {
         setError(`${file.name}: only PDF, JPG and PNG files are accepted.`)
         continue
       }
@@ -1252,6 +1253,7 @@ function SubmitTab({
       next.push({
         id: crypto.randomUUID(),
         file,
+        type,
         // carry the previous student's name for long runs of the same person
         student: files.length ? files[files.length - 1].student : '',
       })
@@ -1305,7 +1307,7 @@ function SubmitTab({
       const path = `${school.id}/${crypto.randomUUID()}-${safe}`
       const uploadError = await client.storage
         .from('submissions')
-        .upload(path, entry.file, { contentType: entry.file.type })
+        .upload(path, entry.file, { contentType: entry.type })
         .then(({ error: e }) => e)
       if (uploadError) {
         failures.push(`${entry.file.name}: upload failed`)

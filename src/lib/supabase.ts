@@ -167,6 +167,30 @@ export function buildWorkMailto(payload: WorkPayload): string {
   return `mailto:hello@omnimath.co.nz?subject=${subject}&body=${encodeURIComponent(lines.join('\n'))}`
 }
 
+/**
+ * The content type Storage will accept for an upload.
+ *
+ * Browsers report an empty `File.type` for a PDF opened through some file
+ * managers and `image/jpg` for some JPEGs. The bucket only accepts the three
+ * canonical types and answers anything else with invalid_mime_type, so an
+ * unrecognised declared type falls back to the file's extension rather than
+ * being sent as application/octet-stream.
+ */
+const UPLOAD_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+}
+
+export function resolveUploadType(name: string, declared: string): string | null {
+  const claimed = declared.trim().toLowerCase()
+  if (claimed === 'application/pdf' || claimed === 'image/jpeg' || claimed === 'image/png') {
+    return claimed
+  }
+  return UPLOAD_TYPES[(name.split('.').pop() ?? '').toLowerCase()] ?? null
+}
+
 export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
   const client = await getSupabase()
   // No Turnstile key means no accepted write path (the database only takes
@@ -203,7 +227,7 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
     const prepared = prepare.data as {
       id?: string
       done?: boolean
-      upload?: { path: string; token: string }
+      upload?: { path: string; token: string; contentType?: string }
     }
     if (prepared.done || !prepared.upload) return { ok: true, delivered: true }
 
@@ -212,10 +236,17 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
       return { ok: false, message: 'That submission could not be prepared. Please try again.' }
     }
 
+    // The server resolved the type from the extension when the browser's was
+    // unusable, so prefer its answer over File.type.
+    const contentType =
+      prepared.upload.contentType ??
+      resolveUploadType(payload.file.name, payload.file.type) ??
+      'application/octet-stream'
+
     const { error: uploadError } = await client.storage
       .from('submissions')
       .uploadToSignedUrl(prepared.upload.path, prepared.upload.token, payload.file, {
-        contentType: payload.file.type || 'application/octet-stream',
+        contentType,
       })
 
     if (uploadError) {
