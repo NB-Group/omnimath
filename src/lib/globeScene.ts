@@ -30,12 +30,22 @@ const DOT_RADIUS = 1.006
 
 // The gold band from the mark: one half-turn as it circles the globe, so the
 // front pass is seen edge-on while the wide faces show in the side loops.
-const RIBBON_RADIUS = 1.6
+// The hoop hugs the globe in the mark, and its outer edge must stay inside the
+// square canvas — the earlier radius reached past the frame and the loops were
+// clipped at the sides.
+const RIBBON_RADIUS = 1.38
 const RIBBON_HALF_WIDTH = 0.34
 const RIBBON_HALF_THICKNESS = 0.022
-// theta = u/2 - phase; the phase sets where the band turns edge-on. The mark's
-// front pass crosses the globe edge-on, a quarter turn past face-on.
+// theta = u/2 - phase. A Möbius band turns edge-on exactly once per loop and
+// the phase decides where; this value puts the twist on the front pass, which
+// is how the drawn mark reads (two broad faces in the side loops). Shifting it
+// a quarter turn instead turned the band into a belt across the globe, so it
+// stays where the original tuning put it.
 const RIBBON_TWIST_PHASE = -Math.PI / 4
+// Composition of the hoop relative to the camera. Shallow on purpose: a steep
+// tilt drops the near pass below the globe's equator and it reads as rings.
+const RIBBON_TILT_X = 0.14
+const RIBBON_TILT_Z = 0.13
 
 function buildRibbonGeometry() {
   const segments = 480
@@ -230,9 +240,9 @@ export function createGlobe(
   // The gold Möbius band is shaded by its own shader; no scene lights needed.
 
   const root = new Group()
-  // The hoop is wider than the globe; scale the whole composition so both the
-  // loop and the tail stay inside the canvas, matching the logo's framing.
-  root.scale.setScalar(0.72)
+  // Scale the whole composition so the hoop's outer edge clears the square
+  // canvas; at 0.72 the loops were cropped at the left and right.
+  root.scale.setScalar(0.70)
   scene.add(root)
 
   // The dotted globe spins inside a stationary hoop. Keeping the hoop out of
@@ -319,11 +329,12 @@ export function createGlobe(
   const ribbon = new Mesh(ribbonGeometry, ribbonMaterial)
   ribbon.renderOrder = 2
   ribbonGroup.add(ribbon)
-  // Left high and right low, like the mark. The band itself carries the
-  // half-twist and the cross-section roll; these only set the composition.
-  // Left high and right low, like the mark; the half-twist itself does the rest.
-  ribbonGroup.rotation.z = 0.15
-  ribbonGroup.rotation.x = 0.3
+  // Left high and right low, like the mark. The tilt is deliberately shallow:
+  // at 0.3 the hoop's near pass dropped below the globe's equator and the whole
+  // thing read as a ringed planet rather than a ribbon crossing a sphere.
+  // Shared with the render loop, which would otherwise reset it each frame.
+  ribbonGroup.rotation.z = RIBBON_TILT_Z
+  ribbonGroup.rotation.x = RIBBON_TILT_X
 
   // ---- Dotted surface ------------------------------------------------------
   let dotGeometry: BufferGeometry | null = null
@@ -495,7 +506,7 @@ export function createGlobe(
     globeGroup.rotation.y = baseYaw + spinYaw + t * 0.045 + pointer.x * 0.32
     globeGroup.rotation.x = baseTilt + spinPitch + pointer.y * 0.14
     ribbonGroup.rotation.y = pointer.x * 0.04
-    ribbonGroup.rotation.x = 0.3 + pointer.y * 0.03
+    ribbonGroup.rotation.x = RIBBON_TILT_X + pointer.y * 0.03
     root.position.y = Math.sin(t * 0.7) * 0.015
   }
 

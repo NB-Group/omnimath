@@ -173,10 +173,20 @@ export function Header() {
               <span className="font-mono text-[10.5px] tracking-wider">⌘K</span>
             </button>
 
+            <Link
+              to="/admin"
+              className={cn(
+                'focus-ring hidden rounded-full px-3 py-2 text-[13px] font-medium transition-colors sm:inline-flex',
+                night ? 'text-paper/75 hover:text-paper' : 'text-ink-soft hover:text-ink',
+              )}
+            >
+              Coordinator sign in
+            </Link>
+
             <div className="hidden sm:block">
               <Magnetic>
                 <Link to="/schools" className="btn btn-primary !px-4 !py-2.5 text-[13px]">
-                  Take part
+                  Participate
                   <ArrowUpRight size={15} aria-hidden="true" />
                 </Link>
               </Magnetic>
@@ -267,8 +277,11 @@ export function Header() {
                 className="mt-8 flex flex-col gap-3"
               >
                 <Link to="/schools" className="btn btn-sun w-full">
-                  Take part through your school
+                  Participate through your school
                   <ArrowUpRight size={16} aria-hidden="true" />
+                </Link>
+                <Link to="/admin" className="btn btn-ghost w-full">
+                  Coordinator sign in
                 </Link>
                 <a
                   href="mailto:hello@omnimath.co.nz"
