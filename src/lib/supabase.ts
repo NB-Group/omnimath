@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { turnstileEnabled } from './turnstile'
+import { site } from './site'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
@@ -40,7 +41,7 @@ export type SubmitResult =
   | { ok: false; message: string }
 
 export function buildMailto(payload: MessagePayload): string {
-  const to = siteMailbox(payload.topic)
+  const to = site.email
   const subject = encodeURIComponent(`[Omnimath] ${payload.topic} — ${payload.name}`)
   const lines = [
     `Name: ${payload.name}`,
@@ -52,11 +53,6 @@ export function buildMailto(payload: MessagePayload): string {
     payload.message,
   ].filter(Boolean)
   return `mailto:${to}?subject=${subject}&body=${encodeURIComponent(lines.join('\n'))}`
-}
-
-function siteMailbox(topic: string): string {
-  const schools = /school|coordinat/i.test(topic)
-  return schools ? 'schools@omnimath.co.nz' : 'hello@omnimath.co.nz'
 }
 
 type FunctionResult =
@@ -88,7 +84,7 @@ async function callSubmitFunction(body: BodyInit, headers: Record<string, string
 
 function functionErrorMessage(result: Exclude<FunctionResult, { ok: true }>): string {
   if (result.status === 404) {
-    return 'The submission service is not deployed yet. Please email us directly at hello@omnimath.co.nz.'
+    return `The submission service is not deployed yet. Please email us directly at ${site.email}.`
   }
   if (result.error === 'captcha_failed') {
     return 'The verification expired or failed. Please complete the check again and resubmit.'
@@ -99,7 +95,7 @@ function functionErrorMessage(result: Exclude<FunctionResult, { ok: true }>): st
   if (result.error === 'rate_limit_unavailable') {
     return 'The submission service is busy right now. Please try again shortly, or email us directly.'
   }
-  return 'We could not send that just now. Please try again, or email us directly at hello@omnimath.co.nz.'
+  return `We could not send that just now. Please try again, or email us directly at ${site.email}.`
 }
 
 export async function submitMessage(payload: MessagePayload): Promise<SubmitResult> {
@@ -164,7 +160,7 @@ export function buildWorkMailto(payload: WorkPayload): string {
     '',
     'Please attach your work to this email before sending.',
   ].filter(Boolean)
-  return `mailto:hello@omnimath.co.nz?subject=${subject}&body=${encodeURIComponent(lines.join('\n'))}`
+  return `mailto:${site.email}?subject=${subject}&body=${encodeURIComponent(lines.join('\n'))}`
 }
 
 /**
@@ -256,8 +252,7 @@ export async function submitWork(payload: WorkPayload): Promise<WorkResult> {
       )
       return {
         ok: false,
-        message:
-          'We could not upload that file. Please try again, or email hello@omnimath.co.nz with your work attached.',
+        message: `We could not upload that file. Please try again, or email ${site.email} with your work attached.`,
       }
     }
 

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, BadgeCheck, CalendarCheck, CheckCircle2, FileText, Gift, Sparkles } from 'lucide-react'
 import { PageIntro, Reveal, SectionHeading, Eyebrow } from '../components/ui'
+import { site } from '../lib/site'
 import { usePageMeta } from '../lib/usePageMeta'
 
 const steps = [
@@ -311,10 +312,10 @@ export function Schools() {
                 Prefer email?
               </p>
               <a
-                href="mailto:schools@omnimath.co.nz"
+                href={`mailto:${site.email}`}
                 className="link-underline mt-2 inline-block text-[14px] font-semibold text-navy"
               >
-                schools@omnimath.co.nz
+                {site.email}
               </a>
             </div>
           </div>
@@ -343,10 +344,10 @@ export function Schools() {
                 </Link>{' '}
                 or at{' '}
                 <a
-                  href="mailto:schools@omnimath.co.nz"
+                  href={`mailto:${site.email}`}
                   className="text-navy underline-offset-2 hover:underline"
                 >
-                  schools@omnimath.co.nz
+                  {site.email}
                 </a>
                 .
               </p>

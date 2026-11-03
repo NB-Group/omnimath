@@ -280,11 +280,8 @@ export function ContactForm({ variant = 'contact', id }: { variant?: Variant; id
         <p className="max-w-[15rem] text-[10.5px] leading-relaxed text-ink-faint">
           {turnstileEnabled ? 'Protected by Cloudflare Turnstile. ' : ''}
           We aim to respond within a few days. You can also email{' '}
-          <a
-            href={`mailto:${variant === 'coordinator' ? site.emails.schools : site.emails.general}`}
-            className="link-underline text-navy"
-          >
-            {variant === 'coordinator' ? site.emails.schools : site.emails.general}
+          <a href={`mailto:${site.email}`} className="link-underline text-navy">
+            {site.email}
           </a>
           .
         </p>

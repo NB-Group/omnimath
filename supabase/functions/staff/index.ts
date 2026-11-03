@@ -52,6 +52,12 @@ const TURNSTILE_HOSTNAMES = (Deno.env.get('TURNSTILE_HOSTNAMES') ?? '')
 // Optional approval email; the console shows "notify them yourself" until set.
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
 const RESEND_FROM = Deno.env.get('RESEND_FROM') ?? 'Omnimath <onboarding@resend.dev>'
+// The sign-in link in the approval email. Set SITE_URL to the custom domain
+// once it is live; until then it points at the GitHub Pages deployment.
+const SITE_URL = (Deno.env.get('SITE_URL') ?? 'https://nb-group.github.io/omnimath').replace(
+  /\/+$/,
+  '',
+)
 
 // Invite codes: unambiguous uppercase alphabet (no 0/O, 1/I, 8/B, 5/S, 2/Z).
 const INVITE_ALPHABET = 'ACDEFGHJKLMNPQRTUVWXY34679'
@@ -209,7 +215,9 @@ async function notifyApproved(to: string, name: string): Promise<boolean> {
           `Kia ora ${name},\n\n` +
           'Your Omnimath coordinator account has been approved. Sign in with the ' +
           'email and password you chose:\n\n' +
-          'https://nb-group.github.io/omnimath/admin\n\n' +
+          `${SITE_URL}/admin\n\n` +
+          'If you have forgotten the password you chose, ask us for a new one and ' +
+          'we will set it for you.\n\n' +
           'Ngā mihi,\nThe Omnimath team',
       }),
     })

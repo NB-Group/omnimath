@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, MessageCircle } from 'lucide-react'
 import { site } from '../lib/site'
 import { LogoLink } from './Logo'
 
@@ -73,17 +73,29 @@ export function Footer() {
             </h3>
             <ul className="mt-5 space-y-3 text-[14px] text-paper/65">
               <li>
-                <a href={`mailto:${site.emails.general}`} className="link-underline hover:text-paper">
-                  {site.emails.general}
+                <a href={`mailto:${site.email}`} className="link-underline hover:text-paper">
+                  {site.email}
                 </a>
-                <span className="mt-1 block text-[11.5px] text-paper/55">General enquiries</span>
+                <span className="mt-1 block text-[11.5px] text-paper/55">
+                  General enquiries and schools
+                </span>
               </li>
-              <li>
-                <a href={`mailto:${site.emails.schools}`} className="link-underline hover:text-paper">
-                  {site.emails.schools}
-                </a>
-                <span className="mt-1 block text-[11.5px] text-paper/55">Schools and coordinators</span>
-              </li>
+              {site.community.discord ? (
+                <li>
+                  <a
+                    href={site.community.discord}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="link-underline inline-flex items-center gap-1.5 hover:text-paper"
+                  >
+                    <MessageCircle size={13} aria-hidden="true" />
+                    Community Discord
+                  </a>
+                  <span className="mt-1 block text-[11.5px] text-paper/55">
+                    Questions and announcements
+                  </span>
+                </li>
+              ) : null}
             </ul>
           </div>
         </div>

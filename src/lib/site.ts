@@ -7,13 +7,14 @@ export const site = {
   url: 'https://omnimath.co.nz',
   year: 2027,
   country: 'Aotearoa New Zealand',
-  emails: {
-    general: 'hello@omnimath.co.nz',
-    schools: 'schools@omnimath.co.nz',
-  },
-  social: {
-    instagram: '',
-    linkedin: '',
+  // Every enquiry goes to one mailbox. Keep this in step with the address the
+  // team actually reads; the mailto links and the form fallback all use it.
+  email: 'contact@omnimath.co.nz',
+  community: {
+    // Paste the community server's invite URL here to show its links across
+    // the site. Left empty the links are omitted, so the site never ships a
+    // dead invite.
+    discord: '',
   },
 } as const
 

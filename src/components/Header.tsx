@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ArrowUpRight, ChevronDown, Menu, Search, X } from 'lucide-react'
-import { navigation } from '../lib/site'
+import { navigation, site } from '../lib/site'
 import { cn } from '../lib/utils'
 import { LogoLink } from './Logo'
 import { Magnetic } from './ui'
@@ -284,10 +284,10 @@ export function Header() {
                   Coordinator sign in
                 </Link>
                 <a
-                  href="mailto:hello@omnimath.co.nz"
+                  href={`mailto:${site.email}`}
                   className="mt-2 text-center font-mono text-[11px] tracking-wider text-paper/60"
                 >
-                  hello@omnimath.co.nz
+                  {site.email}
                 </a>
               </motion.div>
             </nav>

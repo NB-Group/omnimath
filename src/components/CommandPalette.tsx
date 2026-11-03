@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { PALETTE_EVENT } from './Header'
 import { cn } from '../lib/utils'
+import { site } from '../lib/site'
 
 type Command = {
   label: string
@@ -32,7 +33,7 @@ const commands: Command[] = [
   { label: 'Contact', hint: 'General enquiries and school support', to: '/contact', group: 'Pages', icon: Mail },
   { label: 'Register your school', hint: 'Become an Omnimath coordinator', to: '/schools#register', group: 'Actions', icon: School },
   { label: 'Explore the challenges', hint: 'See all fifteen challenge cards', to: '/competition/challenges', group: 'Actions', icon: ArrowUpRight },
-  { label: 'Email the team', hint: 'hello@omnimath.co.nz', to: 'mailto:hello@omnimath.co.nz', group: 'Actions', icon: Mail },
+  { label: 'Email the team', hint: site.email, to: `mailto:${site.email}`, group: 'Actions', icon: Mail },
 ]
 
 export function CommandPalette() {

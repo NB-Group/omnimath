@@ -20,7 +20,7 @@ import {
   type WorkPayload,
   type WorkResult,
 } from '../lib/supabase'
-import { yearChallengeRanges, type YearLevel } from '../lib/site'
+import { site, yearChallengeRanges, type YearLevel } from '../lib/site'
 import { worlds } from '../data/worlds'
 import { cn } from '../lib/utils'
 import { Turnstile } from '../components/Turnstile'
@@ -285,8 +285,8 @@ export function Submit() {
                 <ShieldCheck size={16} className="shrink-0 text-leaf-deep" aria-hidden="true" />
                 <p className="text-[11.5px] text-ink-soft">
                   Prefer email? Send to{' '}
-                  <a href="mailto:hello@omnimath.co.nz" className="link-underline font-semibold text-navy">
-                    hello@omnimath.co.nz
+                  <a href={`mailto:${site.email}`} className="link-underline font-semibold text-navy">
+                    {site.email}
                   </a>
                   .
                 </p>
