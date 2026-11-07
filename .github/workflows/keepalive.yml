@@ -1,0 +1,53 @@
+name: Keep Supabase awake
+
+# The free tier pauses a project after seven days without a request, which
+# takes the staff console and both forms down. One cheap read a day is enough
+# to keep it active.
+#
+# Note: GitHub disables scheduled workflows after 60 days with no commits to
+# the repository. Any push re-arms the schedule, so this only becomes a problem
+# if the project goes completely quiet for two months.
+
+on:
+  schedule:
+    # 06:17 UTC daily. Avoid the top of the hour, when GitHub's queue is busiest.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read one row from the public API
+        env:
+          SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Repository variables VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set."
+            exit 1
+          fi
+
+          body=$(mktemp)
+          for attempt in 1 2 3; do
+            code=$(curl -sS --max-time 30 -o "$body" -w '%{http_code}' \
+              "$SUPABASE_URL/rest/v1/schools?select=id&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY") || code="000"
+            echo "attempt $attempt: HTTP $code"
+            if [ "$code" = "200" ]; then
+              head -c 200 "$body"; echo
+              echo "Supabase responded; project stays active."
+              exit 0
+            fi
+            [ "$attempt" -lt 3 ] && sleep $((attempt * 15))
+          done
+
+          echo "--- last response body ---"
+          head -c 500 "$body" || true
+          echo
+          echo "::error::Supabase did not answer with 200. The project may be paused or the keys may have changed."
+          exit 1
